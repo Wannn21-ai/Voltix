@@ -497,6 +497,15 @@ label strong {
   font-weight: 750;
 }
 
+.status-pill::before {
+  content: "";
+  width: 0.52rem;
+  height: 0.52rem;
+  border-radius: 999px;
+  background: var(--volt-yellow);
+  box-shadow: 0 0 10px var(--volt-yellow-glow);
+}
+
 .status-pill.online,
 .badge.success {
   border-color: rgba(0, 230, 118, 0.36);
@@ -504,11 +513,21 @@ label strong {
   color: var(--success);
 }
 
+.status-pill.online::before {
+  background: var(--success);
+  box-shadow: 0 0 10px rgba(0, 230, 118, 0.42);
+}
+
 .status-pill.offline,
 .badge.danger {
   border-color: rgba(255, 23, 68, 0.42);
   background: var(--red-soft);
   color: var(--danger);
+}
+
+.status-pill.offline::before {
+  background: var(--danger);
+  box-shadow: 0 0 10px rgba(255, 23, 68, 0.42);
 }
 
 .badge.warning {

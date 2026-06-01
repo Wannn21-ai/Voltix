@@ -322,6 +322,27 @@
   margin-bottom: 1rem;
 }
 
+.filter-tabs {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.85rem;
+}
+
+.filter-tab {
+  min-height: 2.35rem;
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+}
+
+.filter-tab.active {
+  border-color: var(--border-accent);
+  background: var(--volt-yellow-soft);
+  color: var(--volt-yellow);
+  box-shadow: var(--shadow-volt);
+}
+
 .search-wrap {
   display: grid;
   gap: 0.38rem;
@@ -523,6 +544,11 @@
   .history-toolbar,
   .settings-toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .filter-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .history-title {

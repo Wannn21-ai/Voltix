@@ -47,12 +47,28 @@ async function init(){
 
   els.refreshBtn.addEventListener('click', loadHistory);
   els.historySearch.addEventListener('input', renderFilteredHistory);
-  els.historyFilter.addEventListener('change', renderFilteredHistory);
+  els.historyFilter.addEventListener('change', ()=>{
+    syncFilterTabs(els.historyFilter.value);
+    renderFilteredHistory();
+  });
   els.historySort.addEventListener('change', renderFilteredHistory);
+  document.querySelectorAll('[data-history-filter]').forEach(button=>{
+    button.addEventListener('click', ()=>{
+      els.historyFilter.value = button.dataset.historyFilter;
+      syncFilterTabs(button.dataset.historyFilter);
+      renderFilteredHistory();
+    });
+  });
   els.exportCsvBtn.addEventListener('click', exportCsv);
   els.deleteAllHistoryBtn.addEventListener('click', deleteAllUserHistory);
 
   await loadHistory();
+}
+
+function syncFilterTabs(filter){
+  document.querySelectorAll('[data-history-filter]').forEach(button=>{
+    button.classList.toggle('active', button.dataset.historyFilter === filter);
+  });
 }
 
 function bindEls(){

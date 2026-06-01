@@ -46,6 +46,13 @@
             </div>
           </div>
 
+          <div class="filter-tabs" aria-label="History filters">
+            <button class="filter-tab active" type="button" data-history-filter="all">All</button>
+            <button class="filter-tab" type="button" data-history-filter="overload">Overload</button>
+            <button class="filter-tab" type="button" data-history-filter="recovered">Recovered</button>
+            <button class="filter-tab" type="button" data-history-filter="pending">Not Synced</button>
+          </div>
+
           <div class="history-toolbar">
             <label class="search-wrap">
               <strong>Search</strong>
@@ -70,8 +77,8 @@
                 <option value="peak">Peak power high to low</option>
               </select>
             </label>
-            <button id="exportCsvBtn" class="button-secondary" type="button">Export CSV</button>
-            <button id="deleteAllHistoryBtn" class="button-danger" type="button">Delete My History</button>
+            <button id="exportCsvBtn" class="button-secondary" type="button">Export All CSV</button>
+            <button id="deleteAllHistoryBtn" class="button-danger" type="button">Delete All</button>
           </div>
 
           <div id="historyError" class="error-message" hidden></div>
