@@ -70,7 +70,7 @@ function bindEls(){
     'lastSeen','uptime','ipAddress','voltage','current','power','apparentPower','frequency','pf',
     'pzemTotalKWh','sessionEnergyWh','sessionEnergyKWh','sessionCost','elapsedSec','peakPower',
     'averagePower','tariff','overloadThreshold','warningLimit','overloadInfo','voltageGauge',
-    'currentGauge','voltageGaugeValue','currentGaugeValue','powerCard','cmdDeviceName','startBtn','stopBtn',
+    'currentGauge','voltageGaugeValue','currentGaugeValue','powerCard','powerStatusBadge','webStatusText','cmdDeviceName','startBtn','stopBtn',
     'commandFab','commandModal','commandModalClose',
     'commandStatus','lastAck','dashboardInsightStatus','totalSessions','totalEnergyKwh',
     'totalEnergyWh','totalCost','highestPeakPower','highestPeakPowerDevice','mostEnergyDevice',
@@ -255,13 +255,14 @@ function updatePowerCardState(stateName){
   if(!els.powerCard) return;
   els.powerCard.classList.toggle('power-warning', stateName === 'warning');
   els.powerCard.classList.toggle('power-danger', stateName === 'danger');
+  updatePowerStatusBadge(stateName);
 }
 
 function updateGauges(device){
   const voltage = numberValue(device.voltage);
   const current = numberValue(device.current);
-  setGauge(els.voltageGauge, els.voltageGaugeValue, voltage, 260, formatVoltage(voltage));
-  setGauge(els.currentGauge, els.currentGaugeValue, current, 20, formatCurrent(current));
+  setGauge(els.voltageGauge, els.voltageGaugeValue, voltage, 240, formatNumber(voltage, 1));
+  setGauge(els.currentGauge, els.currentGaugeValue, current, 6, formatNumber(current, 3));
 }
 
 function setGauge(gauge, label, value, max, text){
@@ -361,14 +362,55 @@ function trackFreshness(sys){
 }
 
 function updateConnectionStatus(){
-  const staleMs = Date.now() - (state.lastFreshChangeAt || 0);
-  const online = state.lastFreshValue !== null && staleMs <= 15000;
+  const online = isEspOnline();
   els.connectionStatus.textContent = online ? 'ESP32 online' : 'ESP32 offline or stale';
   els.connectionStatus.className = `status-pill ${online ? 'online' : 'offline'}`;
+  if(els.webStatusText){
+    els.webStatusText.textContent = state.lastFreshValue === null
+      ? 'Web: menunggu ESP32'
+      : online ? 'Web: online' : 'Web: offline/stale';
+  }
   if(els.offlineBanner){
     els.offlineBanner.hidden = online;
   }
+  updatePowerStatusBadge();
   setText('lastSeen', formatFreshnessText());
+}
+
+function isEspOnline(){
+  const staleMs = Date.now() - (state.lastFreshChangeAt || 0);
+  return state.lastFreshValue !== null && staleMs <= 15000;
+}
+
+function updatePowerStatusBadge(powerState = null){
+  if(!els.powerStatusBadge) return;
+  const sessionState = String(state.live?.system?.sessionState ?? '').toUpperCase();
+  const relayOn = state.live?.system?.relay === true;
+  const active = state.live?.session?.active === true;
+  const effectivePowerState = powerState || (
+    els.powerCard?.classList.contains('power-danger') ? 'danger' :
+    els.powerCard?.classList.contains('power-warning') ? 'warning' :
+    'normal'
+  );
+
+  let label = 'Idle';
+  let className = 'badge';
+  if(!isEspOnline()){
+    label = 'Offline';
+    className = 'badge danger';
+  }else if(effectivePowerState === 'danger'){
+    label = 'Overload';
+    className = 'badge danger';
+  }else if(effectivePowerState === 'warning'){
+    label = 'Monitoring';
+    className = 'badge warning';
+  }else if(active || relayOn || sessionState === 'MONITORING' || sessionState === 'WAITING_LOAD'){
+    label = 'Monitoring';
+    className = 'badge success';
+  }
+
+  els.powerStatusBadge.textContent = label;
+  els.powerStatusBadge.className = className;
 }
 
 function formatFreshnessText(){

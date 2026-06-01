@@ -4,6 +4,26 @@
   gap: 1rem;
 }
 
+.dashboard-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.dashboard-section {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015)),
+    var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.dashboard-compact-section {
+  padding-bottom: 0.85rem;
+}
+
 .full-width {
   grid-column: 1 / -1;
 }
@@ -89,7 +109,7 @@
 
 .gauge-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.85rem;
 }
 
@@ -130,7 +150,7 @@
 .gauge-card {
   display: grid;
   align-content: center;
-  min-height: 14rem;
+  min-height: 15.5rem;
   padding: 1.1rem;
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-md);
@@ -142,13 +162,30 @@
   box-shadow: var(--shadow-volt);
 }
 
+.gauge-card-head,
+.power-card-top,
+.power-card-foot,
+.gauge-scale {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.gauge-range,
+.gauge-scale {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .gauge {
   --gauge-value: 0deg;
   --gauge-color: var(--volt-yellow);
   --gauge-glow: var(--volt-yellow-glow);
   display: grid;
   place-items: center;
-  width: min(150px, 55vw);
+  width: min(168px, 55vw);
   aspect-ratio: 1;
   margin: 0.75rem auto;
   border-radius: 50%;
@@ -165,8 +202,69 @@
 }
 
 .gauge strong {
-  font-size: 1.7rem;
+  grid-area: 1 / 1;
+  font-family: var(--font-display);
+  font-size: clamp(1.65rem, 3vw, 2.1rem);
   color: var(--text-primary);
+}
+
+.gauge span {
+  grid-area: 1 / 1;
+  transform: translateY(2.25rem);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.dashboard-power-card {
+  display: grid;
+  align-content: space-between;
+  min-height: 15.5rem;
+  padding: 1.15rem;
+  border: 1px solid rgba(255, 234, 0, 0.32);
+  border-radius: var(--radius-md);
+  background:
+    radial-gradient(circle at 20% 12%, rgba(255, 234, 0, 0.18), transparent 12rem),
+    linear-gradient(180deg, rgba(255, 234, 0, 0.075), rgba(72, 202, 228, 0.025)),
+    var(--panel-2);
+  box-shadow: var(--shadow-volt), 0 18px 48px rgba(0, 0, 0, 0.22);
+}
+
+.dashboard-power-card > span,
+.power-card-top span:first-child,
+.power-card-foot {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.dashboard-power-card strong {
+  display: block;
+  margin: 0.65rem 0 0.1rem;
+  color: var(--volt-yellow);
+  font-family: var(--font-display);
+  font-size: clamp(2.4rem, 5vw, 4.2rem);
+  line-height: 1;
+  text-shadow: 0 0 20px rgba(255, 234, 0, 0.2);
+}
+
+.dashboard-power-card small {
+  color: var(--muted);
+}
+
+.dashboard-power-card .power-card-foot {
+  margin-top: 0.85rem;
+  padding-top: 0.7rem;
+  border-top: 1px dashed var(--line);
+}
+
+.dashboard-power-card .power-card-foot b {
+  color: var(--cyan);
+  font-weight: 800;
+}
+
+.dashboard-stat-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .chart-grid {
@@ -187,11 +285,57 @@
 .chart-wrap {
   position: relative;
   min-height: 250px;
+  overflow: hidden;
 }
 
 .advanced-readings {
   border-color: rgba(72, 202, 228, 0.22);
   box-shadow: var(--shadow-cyan);
+}
+
+.advanced-reading-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.advanced-reading-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 8rem;
+  padding: 0.95rem;
+  border: 1px solid rgba(72, 202, 228, 0.2);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(180deg, rgba(72, 202, 228, 0.055), rgba(255, 234, 0, 0.02)),
+    var(--panel-2);
+}
+
+.advanced-reading-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--cyan);
+  opacity: 0.65;
+}
+
+.advanced-reading-card span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.advanced-reading-card strong {
+  display: block;
+  margin: 0.45rem 0 0.25rem;
+  color: var(--cyan);
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 2.6vw, 2.25rem);
+  line-height: 1.1;
+}
+
+.advanced-reading-card small {
+  color: var(--muted);
 }
 
 .command-panel {
@@ -302,6 +446,16 @@
 
 .power-card.power-danger strong {
   color: var(--red);
+}
+
+.power-card.power-warning.dashboard-power-card {
+  border-color: rgba(255, 183, 3, 0.52);
+  box-shadow: 0 0 24px rgba(255, 183, 3, 0.16), 0 18px 48px rgba(0, 0, 0, 0.22);
+}
+
+.power-card.power-danger.dashboard-power-card {
+  border-color: rgba(255, 23, 68, 0.58);
+  box-shadow: 0 0 28px rgba(255, 23, 68, 0.2), 0 18px 48px rgba(0, 0, 0, 0.22);
 }
 
 .command-status {
@@ -584,6 +738,9 @@
 
 @media (max-width: 1120px) {
   .dashboard-grid,
+  .gauge-grid,
+  .dashboard-stat-grid,
+  .advanced-reading-grid,
   .chart-grid,
   .settings-grid {
     grid-template-columns: 1fr;
