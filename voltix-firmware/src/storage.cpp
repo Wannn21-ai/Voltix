@@ -7,9 +7,12 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
+#include <string.h>
 
 static constexpr const char* HISTORY_PATH = "/history.json";
+static constexpr const char* ACTIVE_SESSION_PATH = "/active_session.json";
 static constexpr size_t HISTORY_DOC_CAPACITY = 16384;
+static constexpr size_t CHECKPOINT_DOC_CAPACITY = 1024;
 
 static bool mounted = false;
 
@@ -74,6 +77,29 @@ static bool writeHistory(DynamicJsonDocument& doc) {
   return written > 0;
 }
 
+static SessionState parseSessionState(const char* value) {
+  if (value == nullptr) {
+    return SessionState::IDLE;
+  }
+  if (strcmp(value, "WAITING_LOAD") == 0) return SessionState::WAITING_LOAD;
+  if (strcmp(value, "MONITORING") == 0) return SessionState::MONITORING;
+  if (strcmp(value, "OVERLOAD") == 0) return SessionState::OVERLOAD;
+  if (strcmp(value, "FINISHING") == 0) return SessionState::FINISHING;
+  if (strcmp(value, "FINISHED") == 0) return SessionState::FINISHED;
+  return SessionState::IDLE;
+}
+
+static SystemMode parseSystemMode(const char* value) {
+  if (value == nullptr) {
+    return SystemMode::BOOT;
+  }
+  if (strcmp(value, "ONLINE") == 0) return SystemMode::ONLINE;
+  if (strcmp(value, "OFFLINE") == 0) return SystemMode::OFFLINE;
+  if (strcmp(value, "SETUP") == 0) return SystemMode::SETUP;
+  if (strcmp(value, "TRANSITION") == 0) return SystemMode::TRANSITION;
+  return SystemMode::BOOT;
+}
+
 bool storageBegin() {
   mounted = LittleFS.begin(true);
   Serial.print("[storage] LittleFS ");
@@ -96,6 +122,15 @@ bool storageAppendCompletedSession(const CompletedSessionSnapshot& snapshot) {
   }
 
   JsonArray history = doc.as<JsonArray>();
+  for (JsonObjectConst existing : history) {
+    const char* existingSessionId = existing["sessionId"] | existing["id"] | "";
+    if (strcmp(existingSessionId, snapshot.sessionId) == 0) {
+      Serial.print("[storage] Session already in history sessionId=");
+      Serial.println(snapshot.sessionId);
+      return true;
+    }
+  }
+
   JsonObject entry = history.createNestedObject();
   if (entry.isNull()) {
     Serial.println("[storage] Failed to append history entry, document is full");
@@ -136,6 +171,10 @@ bool storageAppendCompletedSession(const CompletedSessionSnapshot& snapshot) {
   entry["startMode"] = systemModeToString(snapshot.startMode);
   entry["endMode"] = systemModeToString(snapshot.endMode);
   entry["endReason"] = endReasonToString(snapshot.endReason);
+  if (snapshot.recovered) {
+    entry["recovered"] = true;
+    entry["recoverySource"] = snapshot.recoverySource == nullptr ? "active_session_checkpoint" : snapshot.recoverySource;
+  }
   entry["date"] = snapshot.date;
   entry["time"] = snapshot.time;
   entry["timestamp"] = snapshot.timestamp;
@@ -149,6 +188,138 @@ bool storageAppendCompletedSession(const CompletedSessionSnapshot& snapshot) {
   Serial.print(" count=");
   Serial.println(saved ? history.size() : 0);
   return saved;
+}
+
+bool storageWriteActiveSessionCheckpoint(const ActiveSessionCheckpoint& checkpoint) {
+  if (!mounted) {
+    Serial.println("[storage] Cannot write checkpoint, LittleFS is not mounted");
+    return false;
+  }
+
+  StaticJsonDocument<CHECKPOINT_DOC_CAPACITY> doc;
+  doc["sessionId"] = checkpoint.sessionId;
+  doc["uid"] = checkpoint.uid;
+  doc["deviceName"] = checkpoint.deviceName;
+  doc["active"] = checkpoint.active;
+  doc["sessionState"] = sessionStateToString(checkpoint.sessionState);
+  doc["startMillis"] = checkpoint.startMillis;
+  doc["startUnixMs"] = checkpoint.startUnixMs;
+  doc["elapsedSec"] = checkpoint.elapsedSec;
+  doc["energyWh"] = serialized(String(checkpoint.energyWh, 6));
+  doc["energyKwh"] = serialized(String(checkpoint.energyKwh, 8));
+  doc["cost"] = serialized(String(checkpoint.cost, 4));
+  doc["peakPower"] = checkpoint.peakPower;
+  doc["averagePower"] = checkpoint.averagePower;
+  doc["tariff"] = checkpoint.tariff;
+  doc["currency"] = checkpoint.currency;
+  doc["overloadThreshold"] = checkpoint.overloadThreshold;
+  doc["startMode"] = systemModeToString(checkpoint.startMode);
+  doc["lastCheckpointMs"] = checkpoint.lastCheckpointMs;
+  doc["relayState"] = checkpoint.relayState;
+  doc["createdFrom"] = checkpoint.createdFrom;
+
+  File file = LittleFS.open(ACTIVE_SESSION_PATH, "w");
+  if (!file) {
+    Serial.println("[storage] Failed to open /active_session.json for write");
+    return false;
+  }
+
+  const size_t written = serializeJson(doc, file);
+  file.close();
+  Serial.println(written > 0 ? "[storage] Active session checkpoint saved" : "[storage] Active session checkpoint save failed");
+  return written > 0;
+}
+
+bool storageReadActiveSessionCheckpoint(ActiveSessionCheckpoint& checkpoint) {
+  memset(&checkpoint, 0, sizeof(checkpoint));
+
+  if (!mounted) {
+    Serial.println("[storage] Cannot read checkpoint, LittleFS is not mounted");
+    return false;
+  }
+  if (!LittleFS.exists(ACTIVE_SESSION_PATH)) {
+    return false;
+  }
+
+  File file = LittleFS.open(ACTIVE_SESSION_PATH, "r");
+  if (!file) {
+    Serial.println("[storage] Failed to open /active_session.json for read");
+    return false;
+  }
+
+  StaticJsonDocument<CHECKPOINT_DOC_CAPACITY> doc;
+  const DeserializationError error = deserializeJson(doc, file);
+  file.close();
+  if (error) {
+    Serial.print("[storage] Failed to parse /active_session.json: ");
+    Serial.println(error.c_str());
+    return false;
+  }
+
+  strlcpy(checkpoint.sessionId, doc["sessionId"] | "", sizeof(checkpoint.sessionId));
+  strlcpy(checkpoint.uid, doc["uid"] | "", sizeof(checkpoint.uid));
+  strlcpy(checkpoint.deviceName, doc["deviceName"] | Config::DEFAULT_DEVICE_NAME, sizeof(checkpoint.deviceName));
+  checkpoint.active = doc["active"] | false;
+  checkpoint.sessionState = parseSessionState(doc["sessionState"] | "");
+  checkpoint.startMillis = doc["startMillis"] | 0UL;
+  checkpoint.startUnixMs = doc["startUnixMs"] | 0ULL;
+  checkpoint.elapsedSec = doc["elapsedSec"] | 0UL;
+  checkpoint.energyWh = doc["energyWh"] | 0.0f;
+  checkpoint.energyKwh = doc["energyKwh"] | 0.0f;
+  checkpoint.cost = doc["cost"] | 0.0f;
+  checkpoint.peakPower = doc["peakPower"] | 0.0f;
+  checkpoint.averagePower = doc["averagePower"] | 0.0f;
+  checkpoint.tariff = doc["tariff"] | Config::DEFAULT_TARIFF;
+  strlcpy(checkpoint.currency, doc["currency"] | Config::DEFAULT_CURRENCY, sizeof(checkpoint.currency));
+  checkpoint.overloadThreshold = doc["overloadThreshold"] | Config::OVERLOAD_THRESHOLD_W;
+  checkpoint.startMode = parseSystemMode(doc["startMode"] | "");
+  checkpoint.lastCheckpointMs = doc["lastCheckpointMs"] | 0UL;
+  checkpoint.relayState = doc["relayState"] | false;
+  strlcpy(checkpoint.createdFrom, doc["createdFrom"] | "ESP32", sizeof(checkpoint.createdFrom));
+  return checkpoint.sessionId[0] != '\0';
+}
+
+bool storageReadActiveSessionCheckpointJson(String& out) {
+  out = "{}";
+  if (!mounted) {
+    Serial.println("[storage] Cannot read checkpoint JSON, LittleFS is not mounted");
+    return false;
+  }
+  if (!LittleFS.exists(ACTIVE_SESSION_PATH)) {
+    out = "{}";
+    return true;
+  }
+
+  File file = LittleFS.open(ACTIVE_SESSION_PATH, "r");
+  if (!file) {
+    Serial.println("[storage] Failed to open /active_session.json for read");
+    return false;
+  }
+
+  out = file.readString();
+  file.close();
+  if (out.length() == 0) {
+    out = "{}";
+  }
+  return true;
+}
+
+bool storageClearActiveSessionCheckpoint() {
+  if (!mounted) {
+    Serial.println("[storage] Cannot clear checkpoint, LittleFS is not mounted");
+    return false;
+  }
+  if (!LittleFS.exists(ACTIVE_SESSION_PATH)) {
+    return true;
+  }
+
+  const bool removed = LittleFS.remove(ACTIVE_SESSION_PATH);
+  Serial.println(removed ? "[storage] Active session checkpoint cleared" : "[storage] Active session checkpoint clear failed");
+  return removed;
+}
+
+bool storageHasActiveSessionCheckpoint() {
+  return mounted && LittleFS.exists(ACTIVE_SESSION_PATH);
 }
 
 bool storageReadHistoryJson(String& out) {

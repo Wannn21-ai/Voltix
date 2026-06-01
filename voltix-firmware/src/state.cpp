@@ -80,6 +80,7 @@ const char* endReasonToString(EndReason reason) {
     case EndReason::NONE: return "NONE";
     case EndReason::USER_STOP: return "USER_STOP";
     case EndReason::LOAD_REMOVED: return "LOAD_REMOVED";
+    case EndReason::LOAD_REMOVED_AFTER_POWER_LOSS: return "LOAD_REMOVED_AFTER_POWER_LOSS";
     case EndReason::OVERLOAD: return "OVERLOAD";
     case EndReason::NO_LOAD_DETECTED: return "NO_LOAD_DETECTED";
     case EndReason::POWER_LOSS_RECOVERY: return "POWER_LOSS_RECOVERY";

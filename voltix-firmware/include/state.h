@@ -73,6 +73,31 @@ struct CompletedSessionSnapshot {
   char date[11];
   char time[9];
   uint64_t timestamp;
+  bool recovered;
+  const char* recoverySource;
+};
+
+struct ActiveSessionCheckpoint {
+  char sessionId[24];
+  char uid[64];
+  char deviceName[32];
+  bool active;
+  SessionState sessionState;
+  unsigned long startMillis;
+  uint64_t startUnixMs;
+  unsigned long elapsedSec;
+  float energyWh;
+  float energyKwh;
+  float cost;
+  float peakPower;
+  float averagePower;
+  float tariff;
+  char currency[8];
+  float overloadThreshold;
+  SystemMode startMode;
+  unsigned long lastCheckpointMs;
+  bool relayState;
+  char createdFrom[32];
 };
 
 extern AppConfig appConfig;

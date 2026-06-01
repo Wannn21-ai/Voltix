@@ -1,6 +1,7 @@
 #include "display.h"
 #include "config.h"
 #include "network.h"
+#include "session.h"
 #include "state.h"
 
 #include <Adafruit_GFX.h>
@@ -152,8 +153,21 @@ void renderSetupPortal() {
   finishScreen();
 }
 
+void renderRecovery() {
+  startScreen();
+  drawLine(0, "Voltix Recovery");
+  drawLine(1, "Checking session");
+  drawLine(2, "Please wait");
+  finishScreen();
+}
+
 void renderScreen() {
   if (!oledReady) {
+    return;
+  }
+
+  if (sessionRecoveryIsActive()) {
+    renderRecovery();
     return;
   }
 
