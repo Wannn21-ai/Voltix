@@ -1,20 +1,20 @@
-import { db, DEVICE_ID } from './firebase-config.js';
+import { auth, db, DEVICE_ID } from './firebase-config.js';
 import { ref, set } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js';
-import { auth } from './firebase-config.js';
 
-export async function sendStart(deviceName, config){
+export async function sendStart(deviceName, config = {}){
   const user = auth.currentUser;
   if(!user) throw new Error('Not authenticated');
 
+  const now = Date.now();
   const cmd = {
-    id: 'cmd_start_' + Date.now(),
+    id: `cmd_start_${now}`,
     type: 'START',
     uid: user.uid,
-    sessionId: 'sess_web_' + Date.now(),
+    sessionId: `sess_web_${now}`,
     deviceName: deviceName || 'Unnamed Load',
-    tariff: (config && config.tariff) || 1444.7,
-    overloadThreshold: (config && config.overloadThreshold) || 2000,
-    createdAt: Date.now()
+    tariff: config.tariff ?? 1444.7,
+    overloadThreshold: config.overloadThreshold ?? 2000,
+    createdAt: now
   };
 
   await set(ref(db, `/devices/${DEVICE_ID}/commands/current`), cmd);
@@ -25,13 +25,14 @@ export async function sendStop(liveSessionId){
   const user = auth.currentUser;
   if(!user) throw new Error('Not authenticated');
 
+  const now = Date.now();
   const cmd = {
-    id: 'cmd_stop_' + Date.now(),
+    id: `cmd_stop_${now}`,
     type: 'STOP',
     uid: user.uid,
-    sessionId: liveSessionId || null,
+    sessionId: liveSessionId ?? null,
     reason: 'USER_STOP',
-    createdAt: Date.now()
+    createdAt: now
   };
 
   await set(ref(db, `/devices/${DEVICE_ID}/commands/current`), cmd);

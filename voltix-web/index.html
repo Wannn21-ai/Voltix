@@ -3,19 +3,28 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Voltix — Home</title>
+  <title>Voltix</title>
   <link rel="stylesheet" href="css/base.css">
-  <style>body{display:flex;align-items:center;justify-content:center;height:100vh}</style>
 </head>
-<body>
-  <main>
-    <h1>Voltix Dashboard</h1>
-    <p>Open the dashboard or sign in.</p>
-    <p>
-      <a href="login.html">Login</a>
-      &nbsp;·&nbsp;
-      <a href="dashboard.html">Dashboard</a>
-    </p>
+<body class="home-page">
+  <main class="card home-card">
+    <div class="brand-block" style="justify-content:center">
+      <div class="brand-mark">V</div>
+      <div>
+        <h1 class="brand-title">Voltix</h1>
+        <div class="brand-subtitle">Energy monitor</div>
+      </div>
+    </div>
+    <h1>Voltix Web Dashboard</h1>
+    <p>Live monitoring, session history, device configuration, and energy insights for ESP32 Voltix.</p>
+    <div class="actions" style="justify-content:center">
+      <a class="button-link" href="dashboard.html">Open Dashboard</a>
+      <a class="button-link button-secondary" href="login.html">Login</a>
+    </div>
   </main>
+  <script type="module">
+    import { applyTheme } from './js/utils.js';
+    applyTheme();
+  </script>
 </body>
 </html>

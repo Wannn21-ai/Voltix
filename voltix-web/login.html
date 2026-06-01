@@ -3,23 +3,39 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Voltix — Login</title>
+  <title>Voltix Login</title>
   <link rel="stylesheet" href="css/base.css">
 </head>
-<body>
-  <main class="card">
-    <h2>Sign in to Voltix</h2>
-    <form id="authForm">
-      <label>Email<br><input id="email" type="email" required></label>
-      <label>Password<br><input id="password" type="password" required></label>
+<body class="auth-page">
+  <main class="card auth-card">
+    <div class="brand-block">
+      <div class="brand-mark">V</div>
+      <div>
+        <h1 class="brand-title">Voltix</h1>
+        <div class="brand-subtitle">Energy monitor</div>
+      </div>
+    </div>
+    <h1>Sign in</h1>
+    <p>Use your Firebase Auth email and password to monitor live data and view your own history.</p>
+    <div id="authMessage" class="status-message" aria-live="polite"></div>
+    <form id="authForm" class="auth-form">
+      <label>
+        <strong>Email</strong>
+        <input id="email" type="email" autocomplete="email" required>
+      </label>
+      <label>
+        <strong>Password</strong>
+        <input id="password" type="password" autocomplete="current-password" required>
+      </label>
       <div class="actions">
         <button id="loginBtn" type="button">Login</button>
-        <button id="registerBtn" type="button">Register</button>
+        <button id="registerBtn" class="button-secondary" type="button">Register</button>
       </div>
     </form>
-    <p><a href="index.html">Back</a></p>
+    <p><a href="index.html">Back to home</a></p>
   </main>
 
+  <div id="toast" class="toast" aria-live="polite"></div>
   <script type="module">
     import { initLogin } from './js/auth.js';
     initLogin();

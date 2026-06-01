@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Voltix Advanced</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-block">
+        <div class="brand-mark">V</div>
+        <div>
+          <h1 class="brand-title">Voltix</h1>
+          <div class="brand-subtitle">Energy monitor</div>
+        </div>
+      </div>
+      <nav class="nav-list" aria-label="Main">
+        <a class="nav-link" data-nav="dashboard" href="dashboard.html">Dashboard</a>
+        <a class="nav-link" data-nav="history" href="history.html">History</a>
+        <a class="nav-link" data-nav="advanced" href="advanced.html">Advanced</a>
+        <a class="nav-link" data-nav="settings" href="settings.html">Settings</a>
+      </nav>
+      <div class="sidebar-footer">
+        <div id="userEmail" class="user-email">Signed in</div>
+        <button id="logoutBtn" class="button-secondary" type="button">Logout</button>
+      </div>
+    </aside>
+
+    <div class="main-area">
+      <header class="topbar">
+        <div>
+          <h2 class="page-title">Advanced</h2>
+          <p class="page-kicker">How Voltix measures, protects, and syncs sessions.</p>
+        </div>
+      </header>
+
+      <main class="page-content advanced-article">
+        <section class="panel">
+          <h3>What Voltix Does</h3>
+          <p>Voltix monitors an AC load through the ESP32, relay, PZEM readings, LittleFS storage, Firebase sync, and this authenticated web dashboard. The ESP32 remains device-scoped; user history ownership belongs to the signed-in web account.</p>
+        </section>
+
+        <section class="advanced-grid">
+          <article class="panel">
+            <h3>Energy Formula</h3>
+            <p>Firmware accumulates session energy while monitoring. The dashboard formats the stored values without recalculating ownership or writing live data.</p>
+            <div class="formula">energyKwh = energyWh / 1000</div>
+            <div class="formula">cost = energyKwh * tariff</div>
+          </article>
+          <article class="panel">
+            <h3>Power Factor</h3>
+            <p>Power factor shows how effectively current becomes real power. A lower value can mean the apparent power is much higher than useful power.</p>
+            <div class="formula">PF = realPowerW / apparentPowerVA</div>
+          </article>
+          <article class="panel">
+            <h3>Frequency</h3>
+            <p>Frequency is reported from PZEM readings. It helps spot unstable supply conditions when paired with voltage and current changes.</p>
+          </article>
+        </section>
+
+        <section class="advanced-grid">
+          <article class="panel">
+            <h3>Overload Protection</h3>
+            <p>The overload threshold is stored in device config. The warning percent creates an early warning band before the hard threshold.</p>
+            <div class="formula">warningLimit = overloadThreshold * warningPercent / 100</div>
+          </article>
+          <article class="panel">
+            <h3>Offline Monitoring</h3>
+            <p>If WiFi drops, firmware keeps monitoring locally. Completed sessions are saved to LittleFS first, then queued to Firebase when connectivity returns.</p>
+          </article>
+          <article class="panel">
+            <h3>Pending Sync</h3>
+            <p>Completed sessions are uploaded to the device queue at /devices/esp32-voltix-001/completedSessions. The web app imports them into /users/{uid}/history for the current Firebase Auth user.</p>
+          </article>
+        </section>
+
+        <section class="panel">
+          <h3>Power-Loss Recovery</h3>
+          <p>Firmware checkpoints active sessions in LittleFS. After restart, the ESP32 can resume when load is still present or finalize a recovered session if the load was removed. This dashboard displays recovered session badges from history metadata when available.</p>
+        </section>
+
+        <section class="panel">
+          <h3>Firebase Contract</h3>
+          <ul>
+            <li>Dashboard reads /devices/esp32-voltix-001/live and /devices/esp32-voltix-001/config.</li>
+            <li>START and STOP write only to /devices/esp32-voltix-001/commands/current.</li>
+            <li>History imports completed device sessions into /users/{currentUser.uid}/history.</li>
+            <li>The web app never writes to /devices/esp32-voltix-001/live.</li>
+          </ul>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script type="module" src="js/advanced.js"></script>
+</body>
+</html>

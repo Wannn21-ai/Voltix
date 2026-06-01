@@ -3,109 +3,193 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Voltix — Dashboard</title>
+  <title>Voltix Dashboard</title>
   <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/dashboard.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">Voltix</div>
-    <div class="controls">
-      <span id="connectionStatus">Connecting...</span>
-      <a class="button-link" href="history.html">History</a>
-      <a class="button-link" href="settings.html">Settings</a>
-      <button id="logoutBtn">Logout</button>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-block">
+        <div class="brand-mark">V</div>
+        <div>
+          <h1 class="brand-title">Voltix</h1>
+          <div class="brand-subtitle">Energy monitor</div>
+        </div>
+      </div>
+      <nav class="nav-list" aria-label="Main">
+        <a class="nav-link" data-nav="dashboard" href="dashboard.html">Dashboard</a>
+        <a class="nav-link" data-nav="history" href="history.html">History</a>
+        <a class="nav-link" data-nav="advanced" href="advanced.html">Advanced</a>
+        <a class="nav-link" data-nav="settings" href="settings.html">Settings</a>
+      </nav>
+      <div class="sidebar-footer">
+        <div id="userEmail" class="user-email">Signed in</div>
+        <button id="logoutBtn" class="button-secondary" type="button">Logout</button>
+      </div>
+    </aside>
+
+    <div class="main-area">
+      <header class="topbar">
+        <div>
+          <h2 class="page-title">Live Dashboard</h2>
+          <p class="page-kicker">Real-time load monitoring for device <span id="deviceId">esp32-voltix-001</span></p>
+        </div>
+        <div class="topbar-actions">
+          <span id="connectionStatus" class="status-pill">Connecting...</span>
+          <a class="button-link button-secondary" href="history.html">History</a>
+        </div>
+      </header>
+
+      <main class="page-content dashboard-grid">
+        <section class="panel full-width">
+          <div class="section-head">
+            <div>
+              <h3>Device Status</h3>
+              <p>Offline is based on stale timestamp or uptime over 15 seconds, not only systemMode.</p>
+            </div>
+          </div>
+          <div class="status-grid">
+            <div class="status-card"><span>Device name</span><strong id="deviceName">-</strong><small>Current session label</small></div>
+            <div class="status-card"><span>System mode</span><strong id="systemMode">-</strong><small>Firmware reported mode</small></div>
+            <div class="status-card"><span>Session state</span><strong id="sessionState">-</strong><small>Idle, waiting load, monitoring</small></div>
+            <div class="status-card"><span>Relay</span><strong id="relayState">-</strong><small>Output state</small></div>
+            <div class="status-card"><span>Load detected</span><strong id="loadDetected">-</strong><small>PZEM threshold check</small></div>
+            <div class="status-card"><span>Last live tick</span><strong id="lastSeen">-</strong><small>Timestamp or uptime movement</small></div>
+            <div class="status-card"><span>Uptime</span><strong id="uptime">-</strong><small>Device runtime</small></div>
+            <div class="status-card"><span>IP address</span><strong id="ipAddress">-</strong><small>When reported by firmware</small></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <h3>Voltage and Current</h3>
+              <p>Quick electrical health view.</p>
+            </div>
+          </div>
+          <div class="gauge-grid">
+            <div class="gauge-card">
+              <span class="badge">Voltage</span>
+              <div id="voltageGauge" class="gauge"><strong id="voltageGaugeValue">-</strong></div>
+            </div>
+            <div class="gauge-card">
+              <span class="badge">Current</span>
+              <div id="currentGauge" class="gauge"><strong id="currentGaugeValue">-</strong></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel command-panel">
+          <div class="section-head">
+            <div>
+              <h3>Commands</h3>
+              <p>Writes only to device command queue.</p>
+            </div>
+          </div>
+          <label>
+            <strong>Load name</strong>
+            <input id="cmdDeviceName" placeholder="Unnamed Load" autocomplete="off">
+          </label>
+          <div class="command-buttons">
+            <button id="startBtn" type="button">START</button>
+            <button id="stopBtn" class="stop-button" type="button">STOP</button>
+          </div>
+          <div id="commandStatus" class="command-status">No command sent</div>
+          <div class="divider"></div>
+          <div class="section-head">
+            <h3>Last ACK</h3>
+          </div>
+          <pre id="lastAck">-</pre>
+        </section>
+
+        <section class="panel full-width">
+          <div class="section-head">
+            <div>
+              <h3>Live Metrics</h3>
+              <p>Numeric values preserve zero as a real reading.</p>
+            </div>
+          </div>
+          <div class="metric-grid">
+            <div class="metric-card"><span>Voltage</span><strong id="voltage">-</strong></div>
+            <div class="metric-card"><span>Current</span><strong id="current">-</strong></div>
+            <div class="metric-card"><span>Power</span><strong id="power">-</strong></div>
+            <div class="metric-card"><span>Apparent power</span><strong id="apparentPower">-</strong></div>
+            <div class="metric-card"><span>Frequency</span><strong id="frequency">-</strong></div>
+            <div class="metric-card"><span>Power factor</span><strong id="pf">-</strong></div>
+            <div class="metric-card"><span>PZEM total</span><strong id="pzemTotalKWh">-</strong></div>
+            <div class="metric-card"><span>Session energy</span><strong id="sessionEnergyKWh">-</strong><small id="sessionEnergyWh">-</small></div>
+            <div class="metric-card"><span>Session cost</span><strong id="sessionCost">-</strong></div>
+            <div class="metric-card"><span>Duration</span><strong id="elapsedSec">-</strong></div>
+            <div class="metric-card"><span>Peak power</span><strong id="peakPower">-</strong></div>
+            <div class="metric-card"><span>Average power</span><strong id="averagePower">-</strong></div>
+          </div>
+        </section>
+
+        <section class="panel full-width">
+          <div class="section-head">
+            <div>
+              <h3>Overload and Tariff</h3>
+              <p>Device config is read from Firebase and applied by the ESP32.</p>
+            </div>
+          </div>
+          <div class="metric-grid">
+            <div class="metric-card"><span>Tariff</span><strong id="tariff">-</strong><small>No currency conversion in web</small></div>
+            <div class="metric-card"><span>Overload threshold</span><strong id="overloadThreshold">-</strong></div>
+            <div class="metric-card"><span>Warning limit</span><strong id="warningLimit">-</strong></div>
+          </div>
+          <div id="overloadInfo" class="notice">Waiting for power and threshold data.</div>
+        </section>
+
+        <section class="panel full-width">
+          <div class="section-head">
+            <div>
+              <h3>Charts</h3>
+              <p>Power trend and completed-session comparisons.</p>
+            </div>
+          </div>
+          <div class="chart-grid">
+            <div class="panel chart-panel">
+              <h3>Power Over Time</h3>
+              <div class="chart-wrap"><canvas id="powerChart"></canvas></div>
+            </div>
+            <div class="panel chart-panel">
+              <h3>Device Usage</h3>
+              <div class="chart-wrap"><canvas id="usagePieChart"></canvas></div>
+            </div>
+            <div class="panel chart-panel full-width">
+              <h3>Peak Power Comparison</h3>
+              <div class="chart-wrap"><canvas id="comparisonBarChart"></canvas></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel full-width">
+          <div class="section-head">
+            <div>
+              <h3>Energy Insights</h3>
+              <p id="dashboardInsightStatus">Loading...</p>
+            </div>
+          </div>
+          <div class="summary-grid">
+            <div class="summary-card"><span>Total sessions</span><strong id="totalSessions">0 sessions</strong></div>
+            <div class="summary-card"><span>Total energy</span><strong id="totalEnergyKwh">0.000000 kWh</strong><small id="totalEnergyWh">0.000 Wh</small></div>
+            <div class="summary-card"><span>Total cost</span><strong id="totalCost">Rp 0</strong></div>
+            <div class="summary-card"><span>Highest peak power</span><strong id="highestPeakPower">-</strong><small id="highestPeakPowerDevice">-</small></div>
+            <div class="summary-card"><span>Most energy used</span><strong id="mostEnergyDevice">-</strong><small id="mostEnergyValue">-</small></div>
+            <div class="summary-card"><span>Overload sessions</span><strong id="overloadCount">0 sessions</strong></div>
+          </div>
+          <div class="insight-warnings">
+            <p id="peakWarning" class="warning-message" hidden></p>
+            <p id="overloadWarning" class="warning-message danger" hidden></p>
+          </div>
+        </section>
+      </main>
     </div>
-  </header>
-
-  <main class="grid">
-    <section class="panel">
-      <h3>Device</h3>
-      <div class="row"><b>Device ID:</b> <span id="deviceId">esp32-voltix-001</span></div>
-      <div class="row"><b>Device Name:</b> <span id="deviceName">-</span></div>
-      <div class="row"><b>System Mode:</b> <span id="systemMode">-</span></div>
-      <div class="row"><b>Session State:</b> <span id="sessionState">-</span></div>
-      <div class="row"><b>Relay:</b> <span id="relayState">-</span></div>
-      <div class="row"><b>Load Detected:</b> <span id="loadDetected">-</span></div>
-      <div class="row"><b>Elapsed (s):</b> <span id="elapsedSec">-</span></div>
-    </section>
-
-    <section class="panel">
-      <h3>Power</h3>
-      <div class="row"><b>Voltage:</b> <span id="voltage">-</span></div>
-      <div class="row"><b>Current:</b> <span id="current">-</span></div>
-      <div class="row"><b>Power:</b> <span id="power">-</span></div>
-      <div class="row"><b>Apparent:</b> <span id="apparentPower">-</span></div>
-      <div class="row"><b>Frequency:</b> <span id="frequency">-</span></div>
-      <div class="row"><b>PF:</b> <span id="pf">-</span></div>
-      <div class="row"><b>PZEM Total Energy:</b> <span id="pzemTotalWh">-</span></div>
-    </section>
-
-    <section class="panel">
-      <h3>Session</h3>
-      <div class="row"><b>Session Energy (Wh):</b> <span id="sessionEnergyWh">-</span></div>
-      <div class="row"><b>Session Energy (kWh):</b> <span id="sessionEnergyKWh">-</span></div>
-      <div class="row"><b>Session Cost:</b> <span id="sessionCost">-</span></div>
-    </section>
-
-    <section class="insights-panel">
-      <div class="section-head">
-        <h3>Energy Insights</h3>
-        <span id="dashboardInsightStatus">Loading...</span>
-      </div>
-      <div class="summary-grid compact-summary-grid">
-        <div class="panel summary-card">
-          <span>Total Sessions</span>
-          <strong id="totalSessions">0 sessions</strong>
-        </div>
-        <div class="panel summary-card">
-          <span>Total Energy</span>
-          <strong id="totalEnergyKwh">0.000000 kWh</strong>
-          <small id="totalEnergyWh">0.000 Wh</small>
-        </div>
-        <div class="panel summary-card">
-          <span>Total Cost</span>
-          <strong id="totalCost">Rp 0</strong>
-        </div>
-        <div class="panel summary-card">
-          <span>Highest Peak Power</span>
-          <strong id="highestPeakPower">-</strong>
-          <small id="highestPeakPowerDevice">-</small>
-        </div>
-        <div class="panel summary-card">
-          <span>Most Energy Used</span>
-          <strong id="mostEnergyDevice">-</strong>
-          <small id="mostEnergyValue">-</small>
-        </div>
-        <div class="panel summary-card">
-          <span>Overload Sessions</span>
-          <strong id="overloadCount">0 sessions</strong>
-        </div>
-      </div>
-      <div class="insight-warnings">
-        <p id="peakWarning" class="warning-message" hidden></p>
-        <p id="overloadWarning" class="warning-message danger" hidden></p>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h3>Commands</h3>
-      <label>Device name<br><input id="cmdDeviceName" placeholder="Unnamed Load"></label>
-      <div class="actions">
-        <button id="startBtn">START</button>
-        <button id="stopBtn">STOP</button>
-      </div>
-      <div class="command-status" id="commandStatus">No command sent</div>
-      <div class="divider"></div>
-      <h4>Last Ack</h4>
-      <pre id="lastAck">-</pre>
-    </section>
-  </main>
+  </div>
 
   <div id="toast" class="toast" aria-live="polite"></div>
-
-  <script type="module">
-    import './js/dashboard.js';
-  </script>
+  <script type="module" src="js/dashboard.js"></script>
 </body>
 </html>
