@@ -1,37 +1,32 @@
 # Firebase Flow
 
-Voltix uses Firebase Realtime Database as the online sync layer between the ESP32 and the web dashboard.
+Firebase Realtime Database adalah bridge antara web dashboard dan ESP32. Firebase dipakai untuk command, live telemetry, config, dan cloud sync. Firebase bukan durability gate untuk completed session; LittleFS tetap local source of truth.
 
-Firebase is not the durability gate for completed sessions. Every finished session must be saved locally on the ESP32 first, then synced to Firebase when possible.
-
-## Main Principle
-
-The ESP32 owns device telemetry and the device completed-session queue.
-
-The authenticated web dashboard owns user history under:
+## Main Paths
 
 ```text
-/users/{currentUser.uid}/history/{sessionId}
+/devices/{deviceId}/config
+/devices/{deviceId}/live
+/devices/{deviceId}/commands/current
+/devices/{deviceId}/commands/lastAck
+/devices/{deviceId}/completedSessions/{sessionId}
+/users/{uid}/settings
+/users/{uid}/history/{sessionId}
 ```
 
-This keeps one ESP32 usable by multiple accounts. The ESP32 may carry the `uid` received in a web command for traceability, but it must not hardcode a private UID in firmware.
+## Command Flow
 
-## Session Stop Flow
+1. Web dashboard menulis START/STOP/settings command ke `/devices/{deviceId}/commands/current`.
+2. ESP32 membaca command.
+3. ESP32 menjalankan aksi: relay, session, config, atau acknowledgement.
+4. ESP32 menulis status command ke `/devices/{deviceId}/commands/lastAck`.
+5. ESP32 menghapus/menandai command agar tidak diproses ulang.
 
-```text
-Session stop
-  -> ESP32 saves final session to LittleFS
-  -> ESP32 writes final session to /devices/{deviceId}/completedSessions/{sessionId}
-  -> Web dashboard reads completedSessions while authenticated
-  -> Web copies the session to /users/{currentUser.uid}/history/{sessionId}
-  -> Web history dashboard renders from /users/{currentUser.uid}/history
-```
+Web menulis command, tetapi tidak menulis langsung ke device live state.
 
-If Firebase write fails, the session remains safe in LittleFS as pending sync.
+## Live Flow
 
-## Live Monitoring Flow
-
-The ESP32 publishes live values to:
+ESP32 menulis live telemetry ke:
 
 ```text
 /devices/{deviceId}/live/system
@@ -39,26 +34,33 @@ The ESP32 publishes live values to:
 /devices/{deviceId}/live/session
 ```
 
-The web dashboard reads these paths to show current system state, sensor readings, relay status, load detection, active session progress, and overload status.
+Web membaca path tersebut untuk menampilkan mode, relay state, sensor values, load detection, active session, elapsed time, energy, cost, dan overload status.
 
-## Command Flow
+Web tidak boleh menulis ke `/devices/{deviceId}/live`; path live adalah output dari ESP32.
 
-The authenticated web dashboard writes a command to:
+## Config Flow
+
+- Web settings dapat mengubah tariff dan overload threshold melalui Firebase.
+- ESP32 membaca `/devices/{deviceId}/config`.
+- Captive portal juga dapat menyimpan basic local config untuk startup/offline use.
+- Firmware memakai config terakhir yang tersedia saat offline.
+
+## Completed Session Flow
 
 ```text
-/devices/{deviceId}/commands/current
+Session finished
+  -> ESP32 saves final snapshot to LittleFS
+  -> ESP32 writes to /devices/{deviceId}/completedSessions/{sessionId}
+  -> Authenticated web imports it into /users/{uid}/history/{sessionId}
+  -> Web history renders from /users/{uid}/history
 ```
 
-The ESP32 reads the command, processes it, then writes the acknowledgement to:
+Jika Firebase gagal, session tetap aman di LittleFS dan ditandai pending sync sampai koneksi kembali.
 
-```text
-/devices/{deviceId}/commands/lastAck
-```
+## Multi Account Rule
 
-The command should include a unique `id`, command `type`, authenticated `uid`, `sessionId`, and `createdAt` timestamp.
+Satu ESP32 bisa dipakai banyak akun. Karena itu:
 
-## Development Rules Scope
-
-The rules in `firebase/database.rules.json` are for development and testing. They keep the contract readable, enforce required fields, allow the ESP32 development path to write device data, and ensure authenticated users can only read and write their own `/users/{uid}` branch.
-
-These rules are not final production security rules.
+- ESP32 tidak boleh hardcode user UID.
+- Web yang sedang login bertanggung jawab menyalin completed session ke `/users/{uid}/history/{sessionId}`.
+- `sessionId` dipakai sebagai identity untuk mencegah duplicate history.
