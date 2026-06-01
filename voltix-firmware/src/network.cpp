@@ -1,23 +1,242 @@
 #include "network.h"
+#include "config.h"
 #include "credentials.h"
 #include "state.h"
 
 #include <Arduino.h>
+#include <DNSServer.h>
+#include <Preferences.h>
+#include <WebServer.h>
 #include <WiFi.h>
 
-static unsigned long lastReconnectAttemptMs = 0;
-static bool wasConnected = false;
+namespace {
+constexpr const char* PREF_NAMESPACE = "voltix";
+constexpr const char* PREF_KEY_WIFI_SSID = "wifi_ssid";
+constexpr const char* PREF_KEY_WIFI_PASS = "wifi_pass";
+constexpr const char* PREF_KEY_TARIFF = "tariff";
+constexpr const char* PREF_KEY_OVERLOAD = "overloadW";
+constexpr const char* SETUP_AP_SSID = "Voltix-Setup";
+constexpr const char* SETUP_AP_PASSWORD = "12345678";
+constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = 15000UL;
+constexpr unsigned long WIFI_RECONNECT_INTERVAL_MS = 10000UL;
+constexpr unsigned long RESTART_DELAY_MS = 1200UL;
+constexpr unsigned long BOOT_BUTTON_HOLD_MS = 5000UL;
+constexpr byte DNS_PORT = 53;
 
-void networkBegin() {
+static unsigned long lastReconnectAttemptMs = 0;
+static unsigned long connectStartedAtMs = 0;
+static unsigned long restartAtMs = 0;
+static unsigned long bootButtonPressedAtMs = 0;
+static bool portalActive = false;
+static bool wasConnecting = false;
+static bool wasConnected = false;
+static bool restartPending = false;
+static bool bootButtonClearTriggered = false;
+static String savedWifiSsid;
+static String savedWifiPassword;
+static String activeWifiSsid;
+static String activeWifiPassword;
+static WebServer portalServer(80);
+static DNSServer dnsServer;
+static const IPAddress setupIp(192, 168, 4, 1);
+static const IPAddress setupGateway(192, 168, 4, 1);
+static const IPAddress setupSubnet(255, 255, 255, 0);
+
+String htmlEscape(const String& value) {
+  String escaped = value;
+  escaped.replace("&", "&amp;");
+  escaped.replace("\"", "&quot;");
+  escaped.replace("<", "&lt;");
+  escaped.replace(">", "&gt;");
+  return escaped;
+}
+
+void scheduleRestart() {
+  restartPending = true;
+  restartAtMs = millis() + RESTART_DELAY_MS;
+}
+
+void sendSetupForm() {
+  String page;
+  page.reserve(1800);
+  page += F("<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>");
+  page += F("<title>Voltix Setup</title><style>");
+  page += F("body{font-family:Arial,sans-serif;margin:0;background:#f6f7f9;color:#111}");
+  page += F("main{max-width:420px;margin:32px auto;padding:20px;background:#fff;border:1px solid #ddd;border-radius:8px}");
+  page += F("label{display:block;margin-top:14px;font-weight:600}input{box-sizing:border-box;width:100%;padding:10px;margin-top:6px;border:1px solid #bbb;border-radius:6px;font-size:16px}");
+  page += F("button{width:100%;margin-top:18px;padding:12px;border:0;border-radius:6px;background:#111;color:#fff;font-size:16px}");
+  page += F("a{display:block;margin-top:16px;color:#333;text-align:center}</style></head><body><main>");
+  page += F("<h1>Voltix Setup</h1><form method='post' action='/save'>");
+  page += F("<label>WiFi SSID<input name='ssid' required value='");
+  page += htmlEscape(savedWifiSsid);
+  page += F("'></label><label>WiFi Password<input name='password' type='password' value='");
+  page += htmlEscape(savedWifiPassword);
+  page += F("'></label><label>Tariff<input name='tariff' type='number' step='0.01' value='");
+  page += String(appConfig.tariffPerKwh > 0.0f ? appConfig.tariffPerKwh : Config::DEFAULT_TARIFF, 2);
+  page += F("'></label><label>Overload Threshold (W)<input name='overloadThreshold' type='number' step='0.1' value='");
+  page += String(appConfig.overloadThresholdW > 0.0f ? appConfig.overloadThresholdW : Config::OVERLOAD_THRESHOLD_W, 1);
+  page += F("'></label><button type='submit'>Save and Restart</button></form>");
+  page += F("<a href='/status'>Status</a><a href='/reset-wifi'>Reset WiFi</a></main></body></html>");
+  portalServer.send(200, "text/html", page);
+}
+
+void sendStatus() {
+  String status;
+  status.reserve(180);
+  status += F("{\"mode\":\"");
+  status += portalActive ? F("setup_portal") : F("station");
+  status += F("\",\"savedSsidExists\":\"");
+  status += hasSavedWiFiCredentials() ? F("yes") : F("no");
+  status += F("\",\"currentIp\":\"");
+  status += portalActive ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
+  status += F("\",\"systemMode\":\"");
+  status += systemModeToString(systemMode);
+  status += F("\"}");
+  portalServer.send(200, "application/json", status);
+}
+
+void handleSave() {
+  if (!portalServer.hasArg("ssid")) {
+    portalServer.send(400, "text/plain", "Missing WiFi SSID");
+    return;
+  }
+
+  const String ssid = portalServer.arg("ssid");
+  const String password = portalServer.hasArg("password") ? portalServer.arg("password") : "";
+  const float tariff = portalServer.hasArg("tariff") ? portalServer.arg("tariff").toFloat() : appConfig.tariffPerKwh;
+  const float overloadThreshold = portalServer.hasArg("overloadThreshold") ? portalServer.arg("overloadThreshold").toFloat() : appConfig.overloadThresholdW;
+
+  if (ssid.length() == 0) {
+    portalServer.send(400, "text/plain", "WiFi SSID cannot be empty");
+    return;
+  }
+
+  saveWiFiCredentials(ssid, password);
+  appConfig.tariffPerKwh = tariff > 0.0f ? tariff : Config::DEFAULT_TARIFF;
+  appConfig.overloadThresholdW = overloadThreshold > 0.0f ? overloadThreshold : Config::OVERLOAD_THRESHOLD_W;
+  saveLocalConfig();
+
+  Serial.println("[portal] Credentials saved, restarting");
+  portalServer.send(200, "text/html", "<!doctype html><html><body><h1>Saved</h1><p>Voltix is restarting...</p></body></html>");
+  scheduleRestart();
+}
+
+void handleResetWiFi() {
+  clearWiFiCredentials();
+  portalServer.send(200, "text/html", "<!doctype html><html><body><h1>WiFi reset</h1><p>Voltix is restarting...</p></body></html>");
+  scheduleRestart();
+}
+
+void redirectToSetup() {
+  portalServer.sendHeader("Location", String("http://") + setupIp.toString() + "/", true);
+  portalServer.send(302, "text/plain", "");
+}
+
+void startSetupPortal() {
+  if (portalActive) {
+    return;
+  }
+
+  WiFi.disconnect(false, false);
+  WiFi.mode(WIFI_AP);
+  WiFi.softAPConfig(setupIp, setupGateway, setupSubnet);
+  WiFi.softAP(SETUP_AP_SSID, SETUP_AP_PASSWORD);
+
+  dnsServer.start(DNS_PORT, "*", setupIp);
+  portalServer.on("/", HTTP_GET, sendSetupForm);
+  portalServer.on("/status", HTTP_GET, sendStatus);
+  portalServer.on("/save", HTTP_POST, handleSave);
+  portalServer.on("/reset-wifi", HTTP_GET, handleResetWiFi);
+  portalServer.on("/generate_204", HTTP_GET, redirectToSetup);
+  portalServer.on("/fwlink", HTTP_GET, redirectToSetup);
+  portalServer.onNotFound(redirectToSetup);
+  portalServer.begin();
+
+  portalActive = true;
+  wasConnecting = false;
+  systemMode = SystemMode::SETUP;
+
+  Serial.print("[portal] AP started SSID=");
+  Serial.print(SETUP_AP_SSID);
+  Serial.print(" IP=");
+  Serial.println(WiFi.softAPIP());
+}
+
+void startWiFiConnection(const String& ssid, const String& password, const char* source) {
+  activeWifiSsid = ssid;
+  activeWifiPassword = password;
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.begin(activeWifiSsid.c_str(), activeWifiPassword.c_str());
   systemMode = SystemMode::TRANSITION;
   lastReconnectAttemptMs = millis();
-  Serial.print("[network] Connecting to WiFi SSID=");
-  Serial.println(WIFI_SSID);
+  connectStartedAtMs = millis();
+  wasConnecting = true;
+
+  Serial.print("[network] Connecting to ");
+  Serial.print(source);
+  Serial.println(" WiFi...");
+}
+
+bool credentialsFallbackAvailable() {
+  return WIFI_SSID != nullptr && WIFI_SSID[0] != '\0';
+}
+
+void updateBootButton() {
+  const bool pressed = digitalRead(Config::BUTTON_PIN) == LOW;
+  if (!pressed) {
+    bootButtonPressedAtMs = 0;
+    bootButtonClearTriggered = false;
+    return;
+  }
+
+  if (bootButtonPressedAtMs == 0) {
+    bootButtonPressedAtMs = millis();
+    return;
+  }
+
+  if (!bootButtonClearTriggered && millis() - bootButtonPressedAtMs >= BOOT_BUTTON_HOLD_MS) {
+    bootButtonClearTriggered = true;
+    Serial.println("[network] BOOT button held, clearing WiFi credentials");
+    clearWiFiCredentials();
+    scheduleRestart();
+  }
+}
+}
+
+void networkBegin() {
+  pinMode(Config::BUTTON_PIN, INPUT_PULLUP);
+
+  if (loadSavedWiFiCredentials()) {
+    Serial.println("[network] Connecting to saved WiFi...");
+    startWiFiConnection(savedWifiSsid, savedWifiPassword, "saved");
+    return;
+  }
+
+  if (credentialsFallbackAvailable()) {
+    Serial.print("[network] Using credentials.h fallback SSID=");
+    Serial.println(WIFI_SSID);
+    startWiFiConnection(String(WIFI_SSID), String(WIFI_PASSWORD), "credentials.h fallback");
+    return;
+  }
+
+  Serial.println("[network] WiFi failed, starting setup portal");
+  startSetupPortal();
 }
 
 void networkUpdate() {
+  updateBootButton();
+
+  if (restartPending && millis() >= restartAtMs) {
+    ESP.restart();
+  }
+
+  if (portalActive) {
+    dnsServer.processNextRequest();
+    portalServer.handleClient();
+    systemMode = SystemMode::SETUP;
+    return;
+  }
+
   const bool connected = networkIsConnected();
   if (connected != wasConnected) {
     wasConnected = connected;
@@ -34,14 +253,112 @@ void networkUpdate() {
     }
   }
 
-  if (!connected && millis() - lastReconnectAttemptMs >= 10000UL) {
+  if (!connected && wasConnecting && millis() - connectStartedAtMs >= WIFI_CONNECT_TIMEOUT_MS) {
+    Serial.println("[network] WiFi failed, starting setup portal");
+    startSetupPortal();
+    return;
+  }
+
+  if (!connected && !wasConnecting && millis() - lastReconnectAttemptMs >= WIFI_RECONNECT_INTERVAL_MS) {
     lastReconnectAttemptMs = millis();
     Serial.println("[network] Reconnecting WiFi...");
     WiFi.disconnect(false, false);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    WiFi.begin(activeWifiSsid.c_str(), activeWifiPassword.c_str());
+    connectStartedAtMs = millis();
+    wasConnecting = true;
+  }
+
+  if (connected) {
+    wasConnecting = false;
   }
 }
 
 bool networkIsConnected() {
-  return WiFi.status() == WL_CONNECTED;
+  return !portalActive && WiFi.status() == WL_CONNECTED;
+}
+
+bool networkIsPortalActive() {
+  return portalActive;
+}
+
+bool loadSavedWiFiCredentials() {
+  Preferences prefs;
+  if (!prefs.begin(PREF_NAMESPACE, true)) {
+    Serial.println("[network] No saved WiFi credentials");
+    return false;
+  }
+
+  savedWifiSsid = prefs.getString(PREF_KEY_WIFI_SSID, "");
+  savedWifiPassword = prefs.getString(PREF_KEY_WIFI_PASS, "");
+  prefs.end();
+
+  if (savedWifiSsid.length() == 0) {
+    Serial.println("[network] No saved WiFi credentials");
+    return false;
+  }
+
+  Serial.print("[network] Loaded saved WiFi SSID=");
+  Serial.println(savedWifiSsid);
+  return true;
+}
+
+void saveWiFiCredentials(const String& ssid, const String& password) {
+  Preferences prefs;
+  if (!prefs.begin(PREF_NAMESPACE, false)) {
+    Serial.println("[network] Failed to open Preferences for WiFi save");
+    return;
+  }
+
+  prefs.putString(PREF_KEY_WIFI_SSID, ssid);
+  prefs.putString(PREF_KEY_WIFI_PASS, password);
+  prefs.end();
+  savedWifiSsid = ssid;
+  savedWifiPassword = password;
+}
+
+void clearWiFiCredentials() {
+  Preferences prefs;
+  if (!prefs.begin(PREF_NAMESPACE, false)) {
+    Serial.println("[network] Failed to open Preferences for WiFi clear");
+    return;
+  }
+
+  prefs.remove(PREF_KEY_WIFI_SSID);
+  prefs.remove(PREF_KEY_WIFI_PASS);
+  prefs.end();
+  savedWifiSsid = "";
+  savedWifiPassword = "";
+}
+
+bool hasSavedWiFiCredentials() {
+  Preferences prefs;
+  if (!prefs.begin(PREF_NAMESPACE, true)) {
+    return false;
+  }
+  const bool hasSsid = prefs.getString(PREF_KEY_WIFI_SSID, "").length() > 0;
+  prefs.end();
+  return hasSsid;
+}
+
+void loadLocalConfig() {
+  Preferences prefs;
+  if (!prefs.begin(PREF_NAMESPACE, true)) {
+    return;
+  }
+
+  appConfig.tariffPerKwh = prefs.getFloat(PREF_KEY_TARIFF, appConfig.tariffPerKwh > 0.0f ? appConfig.tariffPerKwh : Config::DEFAULT_TARIFF);
+  appConfig.overloadThresholdW = prefs.getFloat(PREF_KEY_OVERLOAD, appConfig.overloadThresholdW > 0.0f ? appConfig.overloadThresholdW : Config::OVERLOAD_THRESHOLD_W);
+  prefs.end();
+}
+
+void saveLocalConfig() {
+  Preferences prefs;
+  if (!prefs.begin(PREF_NAMESPACE, false)) {
+    Serial.println("[network] Failed to open Preferences for config save");
+    return;
+  }
+
+  prefs.putFloat(PREF_KEY_TARIFF, appConfig.tariffPerKwh > 0.0f ? appConfig.tariffPerKwh : Config::DEFAULT_TARIFF);
+  prefs.putFloat(PREF_KEY_OVERLOAD, appConfig.overloadThresholdW > 0.0f ? appConfig.overloadThresholdW : Config::OVERLOAD_THRESHOLD_W);
+  prefs.end();
 }

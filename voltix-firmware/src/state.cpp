@@ -57,6 +57,7 @@ const char* systemModeToString(SystemMode mode) {
     case SystemMode::BOOT: return "BOOT";
     case SystemMode::ONLINE: return "ONLINE";
     case SystemMode::OFFLINE: return "OFFLINE";
+    case SystemMode::SETUP: return "SETUP";
     case SystemMode::TRANSITION: return "TRANSITION";
   }
   return "UNKNOWN";

@@ -203,6 +203,7 @@ void firebaseReadConfig() {
   if (doc["loadRemovedDelaySec"].is<unsigned long>()) appConfig.loadRemovedDelaySec = doc["loadRemovedDelaySec"].as<unsigned long>();
   if (doc["offlineTimeoutSec"].is<unsigned long>()) appConfig.offlineTimeoutSec = doc["offlineTimeoutSec"].as<unsigned long>();
   if (doc["checkpointIntervalSec"].is<unsigned long>()) appConfig.checkpointIntervalSec = doc["checkpointIntervalSec"].as<unsigned long>();
+  saveLocalConfig();
 
   Serial.print("[firebase] Config applied tariff=");
   Serial.print(appConfig.tariffPerKwh, 2);
@@ -251,6 +252,7 @@ void firebasePollCommand() {
     const char* deviceName = doc["deviceName"] | Config::DEFAULT_DEVICE_NAME;
     if (doc["tariff"].is<float>()) appConfig.tariffPerKwh = doc["tariff"].as<float>();
     if (doc["overloadThreshold"].is<float>()) appConfig.overloadThresholdW = doc["overloadThreshold"].as<float>();
+    saveLocalConfig();
     sessionStart(deviceName);
     sessionSetRemoteContext(uid, commandSessionId);
     setAck(id, type, "DONE", "START command processed");

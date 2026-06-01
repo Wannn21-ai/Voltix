@@ -4,6 +4,7 @@ enum class SystemMode {
   BOOT,
   ONLINE,
   OFFLINE,
+  SETUP,
   TRANSITION
 };
 

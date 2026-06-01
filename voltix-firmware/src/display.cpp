@@ -1,5 +1,6 @@
 #include "display.h"
 #include "config.h"
+#include "network.h"
 #include "state.h"
 
 #include <Adafruit_GFX.h>
@@ -142,8 +143,22 @@ void renderOverload() {
   finishScreen();
 }
 
+void renderSetupPortal() {
+  startScreen();
+  drawLine(0, "Voltix Setup");
+  drawLine(1, "AP: Voltix-Setup");
+  drawLine(2, "IP: 192.168.4.1");
+  drawLine(3, "Open in browser");
+  finishScreen();
+}
+
 void renderScreen() {
   if (!oledReady) {
+    return;
+  }
+
+  if (networkIsPortalActive()) {
+    renderSetupPortal();
     return;
   }
 

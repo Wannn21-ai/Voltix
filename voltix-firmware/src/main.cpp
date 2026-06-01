@@ -302,6 +302,7 @@ void setup() {
   Serial.println("=== Voltix firmware boot ===");
 
   stateBegin();
+  loadLocalConfig();
   relayBegin();
   sensorBegin();
   indicatorsBegin();
