@@ -57,7 +57,7 @@ async function init(){
 
 function bindEls(){
   [
-    'refreshBtn','exportCsvBtn','deleteAllHistoryBtn','historySearch','historyFilter','historySort',
+    'refreshBtn','exportCsvBtn','deleteAllHistoryBtn','historySearch','historyFilter','historySort','historyHeaderStatus',
     'totalSessions','totalEnergyKwh','totalEnergyWh','totalCost','highestPeakPower',
     'highestPeakPowerDevice','mostEnergyDevice','mostEnergyValue','overloadCount',
     'peakWarning','overloadWarning','historyStatus','historyError','emptyState','historyList'
@@ -167,6 +167,9 @@ function renderFilteredHistory(){
   state.visibleSessions = sessions;
   renderHistory(sessions);
   els.historyStatus.textContent = `${sessions.length} shown / ${state.sessions.length} total`;
+  if(els.historyHeaderStatus){
+    els.historyHeaderStatus.textContent = `${state.sessions.length} sessions`;
+  }
 }
 
 function sorter(mode){

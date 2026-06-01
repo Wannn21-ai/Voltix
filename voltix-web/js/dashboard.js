@@ -66,10 +66,12 @@ async function init(){
 function bindEls(){
   [
     'connectionStatus','deviceId','deviceName','systemMode','sessionState','relayState','loadDetected',
+    'headerDeviceName','headerSessionState','offlineBanner',
     'lastSeen','uptime','ipAddress','voltage','current','power','apparentPower','frequency','pf',
     'pzemTotalKWh','sessionEnergyWh','sessionEnergyKWh','sessionCost','elapsedSec','peakPower',
     'averagePower','tariff','overloadThreshold','warningLimit','overloadInfo','voltageGauge',
     'currentGauge','voltageGaugeValue','currentGaugeValue','powerCard','cmdDeviceName','startBtn','stopBtn',
+    'commandFab','commandModal','commandModalClose',
     'commandStatus','lastAck','dashboardInsightStatus','totalSessions','totalEnergyKwh',
     'totalEnergyWh','totalCost','highestPeakPower','highestPeakPowerDevice','mostEnergyDevice',
     'mostEnergyValue','overloadCount','peakWarning','overloadWarning'
@@ -77,11 +79,20 @@ function bindEls(){
 }
 
 function setupCommands(){
+  els.commandFab?.addEventListener('click', ()=>setCommandModalOpen(true));
+  els.commandModalClose?.addEventListener('click', ()=>setCommandModalOpen(false));
+  els.commandModal?.addEventListener('click', event=>{
+    if(event.target === els.commandModal){
+      setCommandModalOpen(false);
+    }
+  });
+
   els.startBtn.addEventListener('click', async ()=>{
     beginCommandSend('START');
     try{
       const cmd = await sendStart(els.cmdDeviceName.value.trim(), state.config);
       waitForAck(cmd);
+      setCommandModalOpen(false);
       showToast(`START sent: ${cmd.id}`);
     }catch(error){
       clearPendingCommand();
@@ -96,6 +107,7 @@ function setupCommands(){
       const sessId = state.live?.session?.sessionId;
       const cmd = await sendStop(sessId);
       waitForAck(cmd);
+      setCommandModalOpen(false);
       showToast(`STOP sent: ${cmd.id}`);
     }catch(error){
       clearPendingCommand();
@@ -103,6 +115,15 @@ function setupCommands(){
       showToast(`STOP failed: ${error.message}`);
     }
   });
+}
+
+function setCommandModalOpen(isOpen){
+  if(!els.commandModal) return;
+  els.commandModal.classList.toggle('show', isOpen);
+  els.commandModal.setAttribute('aria-hidden', String(!isOpen));
+  if(isOpen){
+    els.cmdDeviceName?.focus();
+  }
 }
 
 function listenLive(){
@@ -160,6 +181,8 @@ function updateLiveUI(live){
   const currency = state.config.currency ?? session.currency ?? 'IDR';
 
   setText('deviceName', session.deviceName ?? device.deviceName ?? live.deviceName);
+  setText('headerDeviceName', session.deviceName ?? device.deviceName ?? live.deviceName ?? DEVICE_ID);
+  setText('headerSessionState', sys.sessionState ?? 'No live state');
   setText('systemMode', sys.systemMode);
   setText('sessionState', sys.sessionState);
   setText('relayState', formatOnOff(sys.relay));
@@ -342,6 +365,9 @@ function updateConnectionStatus(){
   const online = state.lastFreshValue !== null && staleMs <= 15000;
   els.connectionStatus.textContent = online ? 'ESP32 online' : 'ESP32 offline or stale';
   els.connectionStatus.className = `status-pill ${online ? 'online' : 'offline'}`;
+  if(els.offlineBanner){
+    els.offlineBanner.hidden = online;
+  }
   setText('lastSeen', formatFreshnessText());
 }
 
