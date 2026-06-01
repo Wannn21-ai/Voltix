@@ -52,6 +52,7 @@ async function init(){
       window.location.href = 'login.html';
     }
   });
+  cleanDashboardShell();
   bindEls();
   els.deviceId.textContent = DEVICE_ID;
   setupCommands();
@@ -60,7 +61,17 @@ async function init(){
   listenConfig();
   listenCompletedSessions();
   listenLastAck();
+  updateConnectionStatus();
   setInterval(updateConnectionStatus, 2000);
+}
+
+function cleanDashboardShell(){
+  const kicker = document.querySelector('.topbar-title-block .page-kicker');
+  if(kicker){
+    kicker.innerHTML = `<span id="deviceId" hidden>${DEVICE_ID}</span>`;
+  }
+
+  document.querySelector('.topbar-actions a[href="history.html"]')?.remove();
 }
 
 function bindEls(){
@@ -70,7 +81,7 @@ function bindEls(){
     'lastSeen','uptime','ipAddress','voltage','current','power','apparentPower','frequency','pf',
     'pzemTotalKWh','sessionEnergyWh','sessionEnergyKWh','sessionCost','elapsedSec','peakPower',
     'averagePower','tariff','overloadThreshold','warningLimit','overloadInfo','voltageGauge',
-    'currentGauge','voltageGaugeValue','currentGaugeValue','powerCard','powerStatusBadge','webStatusText','cmdDeviceName','startBtn','stopBtn',
+    'currentGauge','voltageGaugeValue','currentGaugeValue','powerCard','powerStatusBadge','webStatusText','cmdDeviceName','startBtn','stopBtn','topStopBtn',
     'commandFab','commandModal','commandModalClose',
     'commandStatus','lastAck','dashboardInsightStatus','totalSessions','totalEnergyKwh',
     'totalEnergyWh','totalCost','highestPeakPower','highestPeakPowerDevice','mostEnergyDevice',
@@ -101,7 +112,11 @@ function setupCommands(){
     }
   });
 
-  els.stopBtn.addEventListener('click', async ()=>{
+  els.stopBtn.addEventListener('click', sendStopCommand);
+  els.topStopBtn?.addEventListener('click', sendStopCommand);
+}
+
+async function sendStopCommand(){
     beginCommandSend('STOP');
     try{
       const sessId = state.live?.session?.sessionId;
@@ -114,7 +129,6 @@ function setupCommands(){
       setCommandStatus(`STOP failed: ${error.message}`);
       showToast(`STOP failed: ${error.message}`);
     }
-  });
 }
 
 function setCommandModalOpen(isOpen){
@@ -200,7 +214,7 @@ function updateLiveUI(live){
   setText('pzemTotalKWh', formatEnergyKwh(device.energy ?? device.pzemTotalKwh, 6));
 
   setText('sessionEnergyWh', formatEnergyWh(session.energyWh, 6));
-  setText('sessionEnergyKWh', formatEnergyKwh(session.energy ?? session.energyKwh, 8));
+  setText('sessionEnergyKWh', formatEnergyKwh(session.energy ?? session.energyKwh, 3));
   setText('sessionCost', formatCost(session.cost, currency, session.costText, currency === 'IDR' ? 'Rp 0' : '$0.00'));
   setText('elapsedSec', formatDuration(session.elapsedSec ?? session.durationSec));
   setText('peakPower', formatPower(session.peakPower));
@@ -363,12 +377,12 @@ function trackFreshness(sys){
 
 function updateConnectionStatus(){
   const online = isEspOnline();
-  els.connectionStatus.textContent = online ? 'ESP32 online' : 'ESP32 offline or stale';
+  els.connectionStatus.textContent = online ? 'Online' : 'Offline';
   els.connectionStatus.className = `status-pill ${online ? 'online' : 'offline'}`;
   if(els.webStatusText){
     els.webStatusText.textContent = state.lastFreshValue === null
       ? 'Web: menunggu ESP32'
-      : online ? 'Web: online' : 'Web: offline/stale';
+      : online ? 'Web: online' : 'Web: offline';
   }
   if(els.offlineBanner){
     els.offlineBanner.hidden = online;
@@ -395,10 +409,7 @@ function updatePowerStatusBadge(powerState = null){
 
   let label = 'Idle';
   let className = 'badge';
-  if(!isEspOnline()){
-    label = 'Offline';
-    className = 'badge danger';
-  }else if(effectivePowerState === 'danger'){
+  if(effectivePowerState === 'danger'){
     label = 'Overload';
     className = 'badge danger';
   }else if(effectivePowerState === 'warning'){
@@ -471,8 +482,15 @@ function updateCommandButtons(){
 
   els.startBtn.disabled = waiting || busy;
   els.stopBtn.disabled = waiting || (!busy && session.active !== true);
-  els.startBtn.textContent = waiting && state.pendingCommand?.type === 'START' ? 'Sending START...' : 'START';
-  els.stopBtn.textContent = waiting && state.pendingCommand?.type === 'STOP' ? 'Sending STOP...' : 'STOP';
+  if(els.topStopBtn){
+    els.topStopBtn.disabled = els.stopBtn.disabled;
+    els.topStopBtn.classList.toggle('is-active', busy && !waiting);
+  }
+  els.startBtn.textContent = waiting && state.pendingCommand?.type === 'START' ? 'Sending START...' : 'Start Monitoring';
+  els.stopBtn.textContent = waiting && state.pendingCommand?.type === 'STOP' ? 'Sending STOP...' : 'Stop';
+  if(els.topStopBtn){
+    els.topStopBtn.textContent = waiting && state.pendingCommand?.type === 'STOP' ? 'Sending STOP...' : 'Stop';
+  }
 }
 
 function setCommandStatus(message){

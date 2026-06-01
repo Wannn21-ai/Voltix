@@ -22,18 +22,15 @@
               <h1>Voltix Live Control</h1>
               <p>Active device: <strong id="headerDeviceName">-</strong></p>
             </div>
-            <span id="headerSessionState" class="status-pill">Waiting for live data</span>
+            <div class="live-control-actions">
+              <a class="button-link button-secondary" href="history.html">History</a>
+              <span id="headerSessionState" class="status-pill">Waiting for live data</span>
+              <button id="topStopBtn" class="button-danger top-stop-btn" type="button" disabled>Stop</button>
+            </div>
           </div>
-          <div id="offlineBanner" class="warning-message danger" hidden>ESP32 live data is stale. Monitoring data may be offline.</div>
         </section>
 
         <section class="dashboard-section main-gauge-section">
-          <div class="section-head">
-            <div>
-              <h3>Main Gauge</h3>
-              <p>Compact live view for voltage, current, and active power.</p>
-            </div>
-          </div>
           <div class="gauge-grid">
             <article class="gauge-card">
               <div class="gauge-card-head">
@@ -73,12 +70,6 @@
         </section>
 
         <section class="dashboard-section">
-          <div class="section-head">
-            <div>
-              <h3>Main Stats</h3>
-              <p>Session summary and web/device status.</p>
-            </div>
-          </div>
           <div class="stat-grid dashboard-stat-grid">
             <article class="stat-card is-electric"><span>Energy</span><strong id="sessionEnergyKWh">-</strong><small>Duration: <b id="elapsedSec">-</b></small></article>
             <article class="stat-card is-electric"><span>Estimated Cost</span><strong id="sessionCost">-</strong><small>Tariff: <b id="tariff">-</b>/kWh</small></article>
@@ -87,59 +78,21 @@
           </div>
         </section>
 
-        <section class="dashboard-section advanced-readings">
-          <div class="section-head">
-            <div>
-              <h3>Advanced Readings</h3>
-              <p>For technical reference</p>
-            </div>
-          </div>
-          <div class="advanced-reading-grid">
-            <article class="advanced-reading-card"><span>Power Factor</span><strong id="pf">-</strong><small>0 = poor &middot; 1 = ideal</small></article>
-            <article class="advanced-reading-card"><span>Frequency</span><strong id="frequency">-</strong><small>Hz &middot; standard: 50Hz</small></article>
-            <article class="advanced-reading-card"><span>Apparent Power</span><strong id="apparentPower">-</strong><small>VA = V &times; I</small></article>
-          </div>
-        </section>
-
-        <section class="dashboard-section">
-          <div class="section-head">
-            <div>
-              <h3>Charts</h3>
-              <p>Power trend and completed-session comparisons.</p>
-            </div>
-          </div>
-          <div class="chart-grid">
-            <div class="panel chart-panel chart-card chart-card-wide">
-              <h3>Power Over Time</h3>
-              <div class="chart-wrap"><canvas id="powerChart"></canvas></div>
-            </div>
-            <div class="panel chart-panel chart-card">
-              <h3>Device Usage (kWh)</h3>
-              <div class="chart-wrap"><canvas id="usagePieChart"></canvas></div>
-            </div>
-            <div class="panel chart-panel chart-card full-width">
-              <h3>Power Comparison Per Device</h3>
-              <div class="chart-wrap"><canvas id="comparisonBarChart"></canvas></div>
-            </div>
-          </div>
-        </section>
-
         <section class="dashboard-section dashboard-compact-section">
           <div class="section-head">
             <div>
-              <h3>Device Status</h3>
-              <p>Offline is based on stale timestamp or uptime over 15 seconds, not only systemMode.</p>
+              <h3>More Information</h3>
             </div>
           </div>
-          <div class="status-grid">
-            <div class="status-card"><span>System mode</span><strong id="systemMode">-</strong><small>Firmware reported mode</small></div>
-            <div class="status-card is-electric"><span>Session state</span><strong id="sessionState">-</strong><small>Idle, waiting load, monitoring</small></div>
-            <div class="status-card"><span>Relay</span><strong id="relayState">-</strong><small>Output state</small></div>
-            <div class="status-card"><span>Load detected</span><strong id="loadDetected">-</strong><small>PZEM threshold check</small></div>
-            <div class="status-card"><span>Last live tick</span><strong id="lastSeen">-</strong><small>Timestamp or uptime movement</small></div>
-            <div class="status-card"><span>Uptime</span><strong id="uptime">-</strong><small>Device runtime</small></div>
-            <div class="status-card"><span>IP address</span><strong id="ipAddress">-</strong><small>When reported by firmware</small></div>
-            <div class="status-card"><span>PZEM total</span><strong id="pzemTotalKWh">-</strong><small>Meter cumulative value</small></div>
+          <div class="status-grid more-info-grid">
+            <div class="status-card"><span>System mode</span><strong id="systemMode">-</strong></div>
+            <div class="status-card is-electric"><span>Session state</span><strong id="sessionState">-</strong></div>
+            <div class="status-card"><span>Relay</span><strong id="relayState">-</strong></div>
+            <div class="status-card"><span>Load detected</span><strong id="loadDetected">-</strong></div>
+            <div class="status-card"><span>Last live tick</span><strong id="lastSeen">-</strong></div>
+            <div class="status-card"><span>Uptime</span><strong id="uptime">-</strong></div>
+            <div class="status-card"><span>IP address</span><strong id="ipAddress">-</strong></div>
+            <div class="status-card"><span>PZEM total</span><strong id="pzemTotalKWh">-</strong></div>
             <div class="status-card"><span>Voltage</span><strong id="voltage">-</strong></div>
             <div class="status-card"><span>Current</span><strong id="current">-</strong></div>
             <div class="status-card"><span>Peak power</span><strong id="peakPower">-</strong></div>
@@ -148,21 +101,6 @@
             <div class="status-card"><span>Warning limit</span><strong id="warningLimit">-</strong></div>
           </div>
           <div id="overloadInfo" class="notice">Waiting for power and threshold data.</div>
-        </section>
-
-        <section class="dashboard-section command-panel">
-          <div class="section-head">
-            <div>
-              <h3>Command Status</h3>
-              <p>START and STOP write only to the Voltix command queue.</p>
-            </div>
-          </div>
-          <div id="commandStatus" class="command-status">No command sent</div>
-          <div class="divider"></div>
-          <div class="section-head">
-            <h3>Last ACK</h3>
-          </div>
-          <pre id="lastAck">-</pre>
         </section>
 
         <section class="dashboard-section">
@@ -184,6 +122,47 @@
             <p id="overloadWarning" class="warning-message danger" hidden></p>
           </div>
         </section>
+
+        <section class="dashboard-section advanced-readings">
+          <div class="section-head">
+            <div>
+              <h3>Advanced Readings</h3>
+              <p>For technical reference</p>
+            </div>
+          </div>
+          <div class="advanced-reading-grid">
+            <article class="advanced-reading-card"><span>Power Factor</span><strong id="pf">-</strong><small>0 = poor &middot; 1 = ideal</small></article>
+            <article class="advanced-reading-card"><span>Frequency</span><strong id="frequency">-</strong><small>Hz &middot; standard: 50Hz</small></article>
+            <article class="advanced-reading-card"><span>Apparent Power</span><strong id="apparentPower">-</strong><small>VA = V &times; I</small></article>
+          </div>
+        </section>
+
+        <section class="dashboard-section">
+          <div class="section-head">
+            <div>
+              <h3>Charts</h3>
+            </div>
+          </div>
+          <div class="chart-grid">
+            <div class="panel chart-panel chart-card chart-card-wide">
+              <h3>Power Over Time</h3>
+              <div class="chart-wrap"><canvas id="powerChart"></canvas></div>
+            </div>
+            <div class="panel chart-panel chart-card">
+              <h3>Device Usage (kWh)</h3>
+              <div class="chart-wrap"><canvas id="usagePieChart"></canvas></div>
+            </div>
+            <div class="panel chart-panel chart-card full-width">
+              <h3>Power Comparison Per Device</h3>
+              <div class="chart-wrap"><canvas id="comparisonBarChart"></canvas></div>
+            </div>
+          </div>
+        </section>
+
+        <div hidden>
+          <div id="commandStatus">No command sent</div>
+          <pre id="lastAck">-</pre>
+        </div>
       </main>
     </div>
   </div>
@@ -191,20 +170,16 @@
   <button id="commandFab" class="fab" type="button" aria-label="Open command controls">+</button>
   <div id="commandModal" class="modal-overlay" aria-hidden="true">
     <section class="modal">
-      <div class="modal-head">
-        <div>
-          <h3>Start or Stop Monitoring</h3>
-          <p class="topbar-meta">Commands are sent to /devices/esp32-voltix-001/commands/current.</p>
-        </div>
+      <div class="modal-head modal-head-compact">
         <button id="commandModalClose" class="button-secondary modal-close" type="button" aria-label="Close command controls">X</button>
       </div>
       <label>
-        <strong>Load name</strong>
+        <strong>Device name</strong>
         <input id="cmdDeviceName" placeholder="Unnamed Load" autocomplete="off">
       </label>
       <div class="command-buttons">
-        <button id="startBtn" type="button">START</button>
-        <button id="stopBtn" class="stop-button" type="button">STOP</button>
+        <button id="startBtn" type="button">Start Monitoring</button>
+        <button id="stopBtn" class="stop-button" type="button">Stop</button>
       </div>
     </section>
   </div>

@@ -147,6 +147,23 @@
   flex-wrap: wrap;
 }
 
+.live-control-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.top-stop-btn {
+  min-width: 7rem;
+  box-shadow: 0 0 18px rgba(255, 23, 68, 0.12);
+}
+
+.top-stop-btn.is-active {
+  box-shadow: 0 0 24px rgba(255, 23, 68, 0.26), 0 14px 34px rgba(0, 0, 0, 0.25);
+}
+
 .gauge-card {
   display: grid;
   align-content: center;
@@ -393,6 +410,11 @@
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 1rem;
+}
+
+.modal-head-compact {
+  justify-content: flex-end;
+  margin-bottom: 0.35rem;
 }
 
 .modal-head h3 {
