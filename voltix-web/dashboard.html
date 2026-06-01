@@ -16,17 +16,9 @@
       <header class="topbar" id="topbar"></header>
 
       <main class="page-content dashboard-page">
-        <section class="page-header full-width">
-          <div class="page-header-row">
-            <div>
-              <h1>Voltix Live Control</h1>
-              <p>Active device: <strong id="headerDeviceName">-</strong></p>
-            </div>
-            <div class="live-control-actions">
-              <a class="button-link button-secondary" href="history.html">History</a>
-              <span id="headerSessionState" class="status-pill">Waiting for live data</span>
-              <button id="topStopBtn" class="button-danger top-stop-btn" type="button" disabled>Stop</button>
-            </div>
+        <section id="liveControlBar" class="page-header live-control-bar full-width" hidden>
+          <div class="live-control-actions">
+            <button id="topStopBtn" class="button-danger top-stop-btn" type="button" disabled hidden>Stop</button>
           </div>
         </section>
 
@@ -67,6 +59,7 @@
               </div>
             </article>
           </div>
+          <div id="overloadInfo" class="notice">Waiting for power and threshold data.</div>
         </section>
 
         <section class="dashboard-section">
@@ -76,31 +69,6 @@
             <article class="stat-card"><span>Session Count</span><strong id="totalSessions">0 sessions</strong><small>All devices total</small></article>
             <article class="stat-card"><span>Device Name</span><strong id="deviceName">-</strong><small id="webStatusText">Web: menunggu ESP32</small></article>
           </div>
-        </section>
-
-        <section class="dashboard-section dashboard-compact-section">
-          <div class="section-head">
-            <div>
-              <h3>More Information</h3>
-            </div>
-          </div>
-          <div class="status-grid more-info-grid">
-            <div class="status-card"><span>System mode</span><strong id="systemMode">-</strong></div>
-            <div class="status-card is-electric"><span>Session state</span><strong id="sessionState">-</strong></div>
-            <div class="status-card"><span>Relay</span><strong id="relayState">-</strong></div>
-            <div class="status-card"><span>Load detected</span><strong id="loadDetected">-</strong></div>
-            <div class="status-card"><span>Last live tick</span><strong id="lastSeen">-</strong></div>
-            <div class="status-card"><span>Uptime</span><strong id="uptime">-</strong></div>
-            <div class="status-card"><span>IP address</span><strong id="ipAddress">-</strong></div>
-            <div class="status-card"><span>PZEM total</span><strong id="pzemTotalKWh">-</strong></div>
-            <div class="status-card"><span>Voltage</span><strong id="voltage">-</strong></div>
-            <div class="status-card"><span>Current</span><strong id="current">-</strong></div>
-            <div class="status-card"><span>Peak power</span><strong id="peakPower">-</strong></div>
-            <div class="status-card"><span>Average power</span><strong id="averagePower">-</strong></div>
-            <div class="status-card"><span>Session energy (Wh)</span><strong id="sessionEnergyWh">-</strong></div>
-            <div class="status-card"><span>Warning limit</span><strong id="warningLimit">-</strong></div>
-          </div>
-          <div id="overloadInfo" class="notice">Waiting for power and threshold data.</div>
         </section>
 
         <section class="dashboard-section">
@@ -179,7 +147,6 @@
       </label>
       <div class="command-buttons">
         <button id="startBtn" type="button">Start Monitoring</button>
-        <button id="stopBtn" class="stop-button" type="button">Stop</button>
       </div>
     </section>
   </div>

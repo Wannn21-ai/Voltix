@@ -77,11 +77,11 @@ function cleanDashboardShell(){
 function bindEls(){
   [
     'connectionStatus','deviceId','deviceName','systemMode','sessionState','relayState','loadDetected',
-    'headerDeviceName','headerSessionState','offlineBanner',
+    'liveControlBar',
     'lastSeen','uptime','ipAddress','voltage','current','power','apparentPower','frequency','pf',
     'pzemTotalKWh','sessionEnergyWh','sessionEnergyKWh','sessionCost','elapsedSec','peakPower',
     'averagePower','tariff','overloadThreshold','warningLimit','overloadInfo','voltageGauge',
-    'currentGauge','voltageGaugeValue','currentGaugeValue','powerCard','powerStatusBadge','webStatusText','cmdDeviceName','startBtn','stopBtn','topStopBtn',
+    'currentGauge','voltageGaugeValue','currentGaugeValue','powerCard','powerStatusBadge','webStatusText','cmdDeviceName','startBtn','topStopBtn',
     'commandFab','commandModal','commandModalClose',
     'commandStatus','lastAck','dashboardInsightStatus','totalSessions','totalEnergyKwh',
     'totalEnergyWh','totalCost','highestPeakPower','highestPeakPowerDevice','mostEnergyDevice',
@@ -112,7 +112,6 @@ function setupCommands(){
     }
   });
 
-  els.stopBtn.addEventListener('click', sendStopCommand);
   els.topStopBtn?.addEventListener('click', sendStopCommand);
 }
 
@@ -195,8 +194,6 @@ function updateLiveUI(live){
   const currency = state.config.currency ?? session.currency ?? 'IDR';
 
   setText('deviceName', session.deviceName ?? device.deviceName ?? live.deviceName);
-  setText('headerDeviceName', session.deviceName ?? device.deviceName ?? live.deviceName ?? DEVICE_ID);
-  setText('headerSessionState', sys.sessionState ?? 'No live state');
   setText('systemMode', sys.systemMode);
   setText('sessionState', sys.sessionState);
   setText('relayState', formatOnOff(sys.relay));
@@ -384,9 +381,6 @@ function updateConnectionStatus(){
       ? 'Web: menunggu ESP32'
       : online ? 'Web: online' : 'Web: offline';
   }
-  if(els.offlineBanner){
-    els.offlineBanner.hidden = online;
-  }
   updatePowerStatusBadge();
   setText('lastSeen', formatFreshnessText());
 }
@@ -481,13 +475,16 @@ function updateCommandButtons(){
   const busy = relayOn || session.active === true || sessionState === 'MONITORING' || sessionState === 'WAITING_LOAD';
 
   els.startBtn.disabled = waiting || busy;
-  els.stopBtn.disabled = waiting || (!busy && session.active !== true);
+  const stopDisabled = waiting || (!busy && session.active !== true);
   if(els.topStopBtn){
-    els.topStopBtn.disabled = els.stopBtn.disabled;
+    els.topStopBtn.disabled = stopDisabled;
+    els.topStopBtn.hidden = stopDisabled && state.pendingCommand?.type !== 'STOP';
     els.topStopBtn.classList.toggle('is-active', busy && !waiting);
   }
+  if(els.liveControlBar){
+    els.liveControlBar.hidden = !els.topStopBtn || els.topStopBtn.hidden;
+  }
   els.startBtn.textContent = waiting && state.pendingCommand?.type === 'START' ? 'Sending START...' : 'Start Monitoring';
-  els.stopBtn.textContent = waiting && state.pendingCommand?.type === 'STOP' ? 'Sending STOP...' : 'Stop';
   if(els.topStopBtn){
     els.topStopBtn.textContent = waiting && state.pendingCommand?.type === 'STOP' ? 'Sending STOP...' : 'Stop';
   }
