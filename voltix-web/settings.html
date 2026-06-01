@@ -108,47 +108,50 @@
           </form>
         </section>
 
-        <aside class="panel settings-card">
-          <div class="section-head">
-            <div>
-              <h3>Account</h3>
-              <p>Stored under /users/{uid}/settings and /users/{uid}/history.</p>
-            </div>
-          </div>
+        <aside class="settings-side">
+          <section class="settings-card">
+            <h3>Account</h3>
+            <p class="topbar-meta">Stored under /users/{uid}/settings and /users/{uid}/history.</p>
+          </section>
 
-          <h3>Notifications</h3>
-          <div class="toggle-row">
-            <div>
-              <strong>Stale device alerts</strong>
-              <div class="topbar-meta">Warn when live data stops moving.</div>
+          <section class="settings-card">
+            <h3>Notifications</h3>
+            <div class="toggle-row">
+              <div>
+                <strong>Stale device alerts</strong>
+                <div class="topbar-meta">Warn when live data stops moving.</div>
+              </div>
+              <input id="notifyStale" type="checkbox">
             </div>
-            <input id="notifyStale" type="checkbox">
-          </div>
-          <div class="toggle-row">
-            <div>
-              <strong>Overload alerts</strong>
-              <div class="topbar-meta">Surface near-threshold warnings.</div>
+            <div class="toggle-row">
+              <div>
+                <strong>Overload alerts</strong>
+                <div class="topbar-meta">Surface near-threshold warnings.</div>
+              </div>
+              <input id="notifyOverload" type="checkbox">
             </div>
-            <input id="notifyOverload" type="checkbox">
-          </div>
-          <div class="toggle-row">
-            <div>
-              <strong>Command ACK alerts</strong>
-              <div class="topbar-meta">Notify when START or STOP is acknowledged.</div>
+            <div class="toggle-row">
+              <div>
+                <strong>Command ACK alerts</strong>
+                <div class="topbar-meta">Notify when START or STOP is acknowledged.</div>
+              </div>
+              <input id="notifyCommandAck" type="checkbox">
             </div>
-            <input id="notifyCommandAck" type="checkbox">
-          </div>
+          </section>
 
-          <div class="divider"></div>
-          <h3>Data Control</h3>
-          <div class="actions">
-            <button id="exportUserHistoryBtn" class="button-secondary" type="button">Export My History</button>
-            <button id="deleteUserHistoryBtn" class="button-danger" type="button">Delete My History</button>
-          </div>
-          <p class="topbar-meta">Delete clears only your account history. Device completedSessions remain for import by other signed-in users.</p>
-          <div class="divider"></div>
-          <h3>About</h3>
-          <p class="topbar-meta">Voltix keeps device telemetry device-scoped and imports completed sessions into the signed-in user account.</p>
+          <section class="settings-card">
+            <h3>Data Control</h3>
+            <div class="actions">
+              <button id="exportUserHistoryBtn" class="button-secondary" type="button">Export My History</button>
+              <button id="deleteUserHistoryBtn" class="button-danger" type="button">Delete My History</button>
+            </div>
+            <p class="topbar-meta">Delete clears only your account history. Device completedSessions remain for import by other signed-in users.</p>
+          </section>
+
+          <section class="settings-card">
+            <h3>About</h3>
+            <p class="topbar-meta">Voltix keeps device telemetry device-scoped and imports completed sessions into the signed-in user account.</p>
+          </section>
         </aside>
       </main>
     </div>

@@ -56,11 +56,11 @@ export function renderShell(activePage, pageTitle, { user = null, onLogout = nul
   }
 
   sidebar.innerHTML = `
-    <div class="brand-block">
-      <div class="brand-mark">V</div>
+    <div class="brand-block sidebar-logo">
+      <div class="brand-mark sidebar-logo-icon">V</div>
       <div>
-        <h1 class="brand-title">Voltix</h1>
-        <div class="brand-subtitle">Electric energy monitor</div>
+        <h1 class="brand-title sidebar-logo-text">Voltix</h1>
+        <div class="brand-subtitle sidebar-logo-sub">Electric energy monitor</div>
       </div>
     </div>
     <nav class="sidebar-nav" aria-label="Main navigation">
@@ -69,9 +69,15 @@ export function renderShell(activePage, pageTitle, { user = null, onLogout = nul
       ${navLink('advanced', 'Advanced', 'advanced.html', activePage)}
       ${navLink('settings', 'Settings', 'settings.html', activePage)}
     </nav>
-    <div class="sidebar-footer">
-      <div id="userEmail" class="user-email">${safeText(user?.email ?? user?.uid, 'Signed in')}</div>
-      <button id="logoutBtn" class="button-secondary" type="button">Logout</button>
+    <div class="sidebar-footer sidebar-bottom">
+      <div class="sidebar-user">
+        <div class="sidebar-user-avatar">${safeText(user?.email ?? user?.uid, 'V').slice(0, 1).toUpperCase()}</div>
+        <div class="sidebar-user-info">
+          <div class="sidebar-user-name">Signed in</div>
+          <div id="userEmail" class="user-email sidebar-user-email">${safeText(user?.email ?? user?.uid, 'Voltix user')}</div>
+        </div>
+      </div>
+      <button id="logoutBtn" class="button-secondary sidebar-logout" type="button">Sign Out</button>
     </div>
   `;
 
@@ -80,7 +86,7 @@ export function renderShell(activePage, pageTitle, { user = null, onLogout = nul
       <span></span><span></span><span></span>
     </button>
     <div class="topbar-title-block">
-      <h2 class="page-title">${safeText(pageTitle, 'Voltix')}</h2>
+      <h2 class="page-title topbar-title">${safeText(pageTitle, 'Voltix')}</h2>
       ${topbarSubtitle(activePage)}
     </div>
     <div class="topbar-actions">
