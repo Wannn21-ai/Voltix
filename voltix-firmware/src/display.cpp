@@ -171,6 +171,16 @@ void renderScreen() {
     return;
   }
 
+  if (sessionData.state == SessionState::MONITORING) {
+    renderMonitoring();
+    return;
+  }
+
+  if (sessionData.state == SessionState::WAITING_LOAD) {
+    renderWaitingLoad();
+    return;
+  }
+
   if (networkIsPortalActive()) {
     renderSetupPortal();
     return;

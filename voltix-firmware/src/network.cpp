@@ -1,6 +1,8 @@
 #include "network.h"
 #include "config.h"
 #include "credentials.h"
+#include "relay.h"
+#include "session.h"
 #include "state.h"
 
 #include <Arduino.h>
@@ -40,6 +42,7 @@ static bool restartPending = false;
 static bool bootButtonClearTriggered = false;
 static bool bootComplete = false;
 static bool bootButtonArmed = false;
+static bool initialNetworkSetup = true;
 static String savedWifiSsid;
 static String savedWifiPassword;
 static String activeWifiSsid;
@@ -63,6 +66,33 @@ String htmlEscape(const String& value) {
 void scheduleRestart() {
   restartPending = true;
   restartAtMs = millis() + RESTART_DELAY_MS;
+}
+
+bool isSessionBusyForNetwork() {
+  return sessionData.state == SessionState::MONITORING ||
+         sessionData.state == SessionState::WAITING_LOAD ||
+         sessionIsActive() ||
+         relayIsOn() ||
+         sessionRecoveryIsActive();
+}
+
+bool canStartCaptivePortal(const char* reason) {
+  Serial.print("[portal] Request start captive portal: reason=");
+  Serial.print(reason == nullptr ? "unknown" : reason);
+  Serial.print(" sessionState=");
+  Serial.print(sessionStateToString(sessionData.state));
+  Serial.print(" active=");
+  Serial.print(sessionIsActive() ? "yes" : "no");
+  Serial.print(" relay=");
+  Serial.println(relayIsOn() ? "on" : "off");
+
+  if (isSessionBusyForNetwork()) {
+    Serial.print("[portal] Captive portal suppressed: active session, reason=");
+    Serial.println(reason == nullptr ? "unknown" : reason);
+    return false;
+  }
+
+  return true;
 }
 
 void sendSetupForm() {
@@ -147,8 +177,12 @@ void redirectToSetup() {
   portalServer.send(302, "text/plain", "");
 }
 
-void startSetupPortal() {
+void startSetupPortal(const char* reason) {
   if (portalActive) {
+    return;
+  }
+  if (!canStartCaptivePortal(reason)) {
+    systemMode = SystemMode::OFFLINE;
     return;
   }
 
@@ -170,6 +204,7 @@ void startSetupPortal() {
   portalActive = true;
   wasConnecting = false;
   activeWifiSource = WifiSource::NONE;
+  initialNetworkSetup = false;
   systemMode = SystemMode::SETUP;
 
   Serial.println("[network] Starting captive portal");
@@ -179,18 +214,20 @@ void startSetupPortal() {
   Serial.println(WiFi.softAPIP());
 }
 
-void startWiFiConnection(const String& ssid, const String& password, WifiSource source) {
+void startWiFiConnection(const String& ssid, const String& password, WifiSource source, bool background) {
   activeWifiSsid = ssid;
   activeWifiPassword = password;
   activeWifiSource = source;
   WiFi.mode(WIFI_STA);
   WiFi.begin(activeWifiSsid.c_str(), activeWifiPassword.c_str());
-  systemMode = SystemMode::TRANSITION;
+  systemMode = background || isSessionBusyForNetwork() ? SystemMode::OFFLINE : SystemMode::TRANSITION;
   lastReconnectAttemptMs = millis();
   connectStartedAtMs = millis();
   wasConnecting = true;
 
-  if (source == WifiSource::SAVED) {
+  if (background) {
+    Serial.println("[network] Background reconnect attempt to saved WiFi...");
+  } else if (source == WifiSource::SAVED) {
     Serial.println("[network] Trying saved WiFi...");
   } else if (source == WifiSource::FALLBACK) {
     Serial.println("[network] Trying credentials.h fallback WiFi...");
@@ -239,17 +276,17 @@ void networkBegin() {
   Serial.println("[network] Checking saved WiFi credentials...");
 
   if (loadSavedWiFiCredentials(savedWifiSsid, savedWifiPassword)) {
-    startWiFiConnection(savedWifiSsid, savedWifiPassword, WifiSource::SAVED);
+    startWiFiConnection(savedWifiSsid, savedWifiPassword, WifiSource::SAVED, isSessionBusyForNetwork());
     return;
   }
 
-  if (credentialsFallbackAvailable()) {
-    startWiFiConnection(String(WIFI_SSID), String(WIFI_PASSWORD), WifiSource::FALLBACK);
+  if (!isSessionBusyForNetwork() && credentialsFallbackAvailable()) {
+    startWiFiConnection(String(WIFI_SSID), String(WIFI_PASSWORD), WifiSource::FALLBACK, false);
     return;
   }
 
   Serial.println("[network] WiFi failed, starting setup portal");
-  startSetupPortal();
+  startSetupPortal("boot no WiFi credentials");
 }
 
 void networkUpdate() {
@@ -271,7 +308,10 @@ void networkUpdate() {
     wasConnected = connected;
     systemMode = connected ? SystemMode::ONLINE : SystemMode::OFFLINE;
     if (connected) {
-      if (activeWifiSource == WifiSource::SAVED) {
+      initialNetworkSetup = false;
+      if (sessionData.state == SessionState::MONITORING || sessionData.state == SessionState::WAITING_LOAD) {
+        Serial.println("[network] WiFi reconnected, continuing active session");
+      } else if (activeWifiSource == WifiSource::SAVED) {
         Serial.println("[network] Saved WiFi connected");
       } else if (activeWifiSource == WifiSource::FALLBACK) {
         Serial.println("[network] Fallback WiFi connected");
@@ -284,31 +324,63 @@ void networkUpdate() {
         Serial.println("[session] Continuing active session after reconnect");
       }
     } else {
-      Serial.println("[network] WiFi lost, switching to OFFLINE");
+      if (isSessionBusyForNetwork()) {
+        Serial.println("[network] WiFi lost during active session, continuing OFFLINE");
+        Serial.println("[portal] Captive portal suppressed: active session");
+      } else {
+        Serial.println("[network] WiFi lost, switching to OFFLINE");
+      }
     }
   }
 
   if (!connected && wasConnecting && millis() - connectStartedAtMs >= WIFI_CONNECT_TIMEOUT_MS) {
+    if (isSessionBusyForNetwork()) {
+      Serial.println("[network] Background reconnect failed, will retry");
+      wasConnecting = false;
+      systemMode = SystemMode::OFFLINE;
+      return;
+    }
+
     if (activeWifiSource == WifiSource::SAVED) {
       Serial.println("[network] Saved WiFi failed");
-      if (credentialsFallbackAvailable()) {
-        startWiFiConnection(String(WIFI_SSID), String(WIFI_PASSWORD), WifiSource::FALLBACK);
+      if (initialNetworkSetup && credentialsFallbackAvailable()) {
+        startWiFiConnection(String(WIFI_SSID), String(WIFI_PASSWORD), WifiSource::FALLBACK, false);
         return;
       }
     } else if (activeWifiSource == WifiSource::FALLBACK) {
       Serial.println("[network] Fallback WiFi failed");
     }
-    startSetupPortal();
+
+    if (!initialNetworkSetup) {
+      Serial.println("[network] WiFi reconnect failed, will retry");
+      wasConnecting = false;
+      systemMode = SystemMode::OFFLINE;
+      return;
+    }
+
+    initialNetworkSetup = false;
+    startSetupPortal("WiFi failed");
     return;
   }
 
   if (!connected && !wasConnecting && millis() - lastReconnectAttemptMs >= WIFI_RECONNECT_INTERVAL_MS) {
     lastReconnectAttemptMs = millis();
-    Serial.println("[network] Reconnecting WiFi...");
+    const bool background = isSessionBusyForNetwork();
+    if (background) {
+      Serial.println("[network] Background reconnect attempt to saved WiFi...");
+    } else {
+      Serial.println("[network] Reconnecting WiFi...");
+    }
     WiFi.disconnect(false, false);
+    if (background && savedWifiSsid.length() > 0) {
+      activeWifiSsid = savedWifiSsid;
+      activeWifiPassword = savedWifiPassword;
+      activeWifiSource = WifiSource::SAVED;
+    }
     WiFi.begin(activeWifiSsid.c_str(), activeWifiPassword.c_str());
     connectStartedAtMs = millis();
     wasConnecting = true;
+    systemMode = background ? SystemMode::OFFLINE : SystemMode::TRANSITION;
   }
 
   if (connected) {
