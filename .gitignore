@@ -1,0 +1,38 @@
+# =========================
+# VOLTIX ROOT .gitignore
+# =========================
+
+# PlatformIO build files
+voltix-firmware/.pio/
+voltix-firmware/.vscode/
+
+# Firmware credentials - DO NOT COMMIT
+voltix-firmware/include/credentials.h
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS junk
+.DS_Store
+Thumbs.db
+thumbs.db
+desktop.ini
+
+# VS Code workspace local settings
+.vscode/
+
+# Node / web future use
+node_modules/
+dist/
+build/
+
+# Vercel local files
+.vercel/

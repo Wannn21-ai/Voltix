@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Voltix — Login</title>
+  <link rel="stylesheet" href="css/base.css">
+</head>
+<body>
+  <main class="card">
+    <h2>Sign in to Voltix</h2>
+    <form id="authForm">
+      <label>Email<br><input id="email" type="email" required></label>
+      <label>Password<br><input id="password" type="password" required></label>
+      <div class="actions">
+        <button id="loginBtn" type="button">Login</button>
+        <button id="registerBtn" type="button">Register</button>
+      </div>
+    </form>
+    <p><a href="index.html">Back</a></p>
+  </main>
+
+  <script type="module">
+    import { initLogin } from './js/auth.js';
+    initLogin();
+  </script>
+</body>
+</html>

@@ -1,0 +1,149 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "devices": {
+      "$deviceId": {
+        "config": {
+          ".read": true,
+          ".write": true,
+          ".validate": "newData.hasChildren(['tariff', 'currency', 'overloadThreshold', 'overloadWarningPercent', 'loadPowerThreshold', 'loadCurrentThreshold', 'loadRemovedDelaySec', 'offlineTimeoutSec', 'checkpointIntervalSec'])",
+          "tariff": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "currency": { ".validate": "newData.isString()" },
+          "overloadThreshold": { ".validate": "newData.isNumber() && newData.val() > 0" },
+          "overloadWarningPercent": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100" },
+          "loadPowerThreshold": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "loadCurrentThreshold": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "loadRemovedDelaySec": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "offlineTimeoutSec": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "checkpointIntervalSec": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "$other": { ".validate": false }
+        },
+        "live": {
+          ".read": true,
+          "system": {
+            ".write": true,
+            ".validate": "newData.hasChildren(['timestamp', 'internet', 'relay', 'mode', 'systemMode', 'sessionState', 'deviceId', 'pendingSync'])",
+            "timestamp": { ".validate": "newData.isNumber()" },
+            "internet": { ".validate": "newData.isBoolean()" },
+            "relay": { ".validate": "newData.isBoolean()" },
+            "mode": { ".validate": "newData.isString()" },
+            "systemMode": { ".validate": "newData.isString()" },
+            "sessionState": { ".validate": "newData.isString()" },
+            "deviceId": { ".validate": "newData.isString() && newData.val() == $deviceId" },
+            "pendingSync": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+            "$other": { ".validate": false }
+          },
+          "device": {
+            ".write": true,
+            ".validate": "newData.hasChildren(['voltage', 'current', 'power', 'apparent', 'frequency', 'powerFactor', 'energy', 'cost', 'overload', 'loadDetected'])",
+            "voltage": { ".validate": "newData.isNumber()" },
+            "current": { ".validate": "newData.isNumber()" },
+            "power": { ".validate": "newData.isNumber()" },
+            "apparent": { ".validate": "newData.isNumber()" },
+            "frequency": { ".validate": "newData.isNumber()" },
+            "powerFactor": { ".validate": "newData.isNumber()" },
+            "energy": { ".validate": "newData.isNumber()" },
+            "cost": { ".validate": "newData.isNumber()" },
+            "overload": { ".validate": "newData.isBoolean()" },
+            "loadDetected": { ".validate": "newData.isBoolean()" },
+            "$other": { ".validate": false }
+          },
+          "session": {
+            ".write": true,
+            ".validate": "newData.hasChildren(['active', 'sessionId', 'uid', 'deviceName', 'startTime', 'elapsedSec', 'energy', 'cost', 'endReason'])",
+            "active": { ".validate": "newData.isBoolean()" },
+            "sessionId": { ".validate": "newData.isString()" },
+            "uid": { ".validate": "newData.isString()" },
+            "deviceName": { ".validate": "newData.isString()" },
+            "startTime": { ".validate": "newData.isNumber()" },
+            "elapsedSec": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+            "energy": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+            "cost": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+            "endReason": { ".validate": "newData.isString()" },
+            "$other": { ".validate": false }
+          },
+          "$other": { ".validate": false }
+        },
+        "commands": {
+          "current": {
+            ".read": true,
+            ".write": true,
+            ".validate": "newData.val() == null || (newData.hasChildren(['id', 'type', 'uid', 'sessionId', 'createdAt']) && (auth == null || newData.child('uid').val() == auth.uid))",
+            "id": { ".validate": "newData.isString()" },
+            "type": { ".validate": "newData.isString() && (newData.val() == 'START' || newData.val() == 'STOP')" },
+            "uid": { ".validate": "newData.isString() && (auth == null || newData.val() == auth.uid)" },
+            "sessionId": { ".validate": "newData.isString()" },
+            "deviceName": { ".validate": "newData.isString()" },
+            "tariff": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+            "overloadThreshold": { ".validate": "newData.isNumber() && newData.val() > 0" },
+            "reason": { ".validate": "newData.isString()" },
+            "createdAt": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          },
+          "lastAck": {
+            ".read": true,
+            ".write": true,
+            ".validate": "newData.val() == null || newData.hasChildren(['id', 'type', 'status', 'message', 'processedAt'])",
+            "id": { ".validate": "newData.isString()" },
+            "type": { ".validate": "newData.isString()" },
+            "status": { ".validate": "newData.isString()" },
+            "message": { ".validate": "newData.isString()" },
+            "processedAt": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          },
+          "$other": { ".validate": false }
+        },
+        "completedSessions": {
+          ".read": "auth != null",
+          "$sessionId": {
+            ".write": true,
+            ".validate": "newData.hasChildren(['id', 'sessionId', 'deviceId', 'uid', 'name', 'duration', 'durationSec', 'power', 'energy', 'cost', 'costText', 'voltage', 'current', 'frequency', 'powerFactor', 'tariff', 'currency', 'overload', 'overloadThreshold', 'startMode', 'endMode', 'endReason', 'date', 'timestamp', 'syncStatus', 'createdFrom'])",
+            "id": { ".validate": "newData.isString() && newData.val() == $sessionId" },
+            "sessionId": { ".validate": "newData.isString() && newData.val() == $sessionId" },
+            "deviceId": { ".validate": "newData.isString() && newData.val() == $deviceId" },
+            "uid": { ".validate": "newData.isString()" },
+            "name": { ".validate": "newData.isString()" },
+            "duration": { ".validate": "newData.isString()" },
+            "durationSec": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+            "power": { ".validate": "newData.isNumber()" },
+            "energy": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+            "cost": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+            "costText": { ".validate": "newData.isString()" },
+            "voltage": { ".validate": "newData.isNumber()" },
+            "current": { ".validate": "newData.isNumber()" },
+            "frequency": { ".validate": "newData.isNumber()" },
+            "powerFactor": { ".validate": "newData.isNumber()" },
+            "tariff": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+            "currency": { ".validate": "newData.isString()" },
+            "overload": { ".validate": "newData.isBoolean()" },
+            "overloadThreshold": { ".validate": "newData.isNumber() && newData.val() > 0" },
+            "startMode": { ".validate": "newData.isString()" },
+            "endMode": { ".validate": "newData.isString()" },
+            "endReason": { ".validate": "newData.isString()" },
+            "date": { ".validate": "newData.isString()" },
+            "timestamp": { ".validate": "newData.isNumber()" },
+            "syncStatus": { ".validate": "newData.isString()" },
+            "createdFrom": { ".validate": "newData.isString()" },
+            "$other": { ".validate": false }
+          }
+        },
+        "$other": { ".validate": false }
+      }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid",
+        "settings": {
+          ".validate": true
+        },
+        "history": {
+          "$sessionId": {
+            ".validate": "newData.hasChildren(['id', 'sessionId', 'deviceId', 'uid', 'name', 'duration', 'durationSec', 'power', 'energy', 'cost', 'costText', 'voltage', 'current', 'frequency', 'powerFactor', 'tariff', 'currency', 'overload', 'overloadThreshold', 'startMode', 'endMode', 'endReason', 'date', 'timestamp', 'syncStatus', 'createdFrom']) && newData.child('uid').val() == $uid && newData.child('sessionId').val() == $sessionId"
+          }
+        }
+      }
+    }
+  }
+}

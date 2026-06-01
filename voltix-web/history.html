@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Voltix History</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Voltix History</div>
+    <div class="controls">
+      <a class="button-link" href="dashboard.html">Back to Dashboard</a>
+      <button id="refreshBtn">Refresh</button>
+    </div>
+  </header>
+
+  <main class="history-page">
+    <section class="summary-grid">
+      <div class="panel summary-card">
+        <span>Total Sessions</span>
+        <strong id="totalSessions">0</strong>
+      </div>
+      <div class="panel summary-card">
+        <span>Total Energy</span>
+        <strong id="totalEnergyKwh">0.000000 kWh</strong>
+        <small id="totalEnergyWh">0.000 Wh</small>
+      </div>
+      <div class="panel summary-card">
+        <span>Total Cost</span>
+        <strong id="totalCost">Rp 0</strong>
+      </div>
+      <div class="panel summary-card">
+        <span>Highest Peak Power</span>
+        <strong id="highestPeakPower">-</strong>
+        <small id="highestPeakPowerDevice">-</small>
+      </div>
+      <div class="panel summary-card">
+        <span>Most Energy Used</span>
+        <strong id="mostEnergyDevice">-</strong>
+        <small id="mostEnergyValue">-</small>
+      </div>
+      <div class="panel summary-card">
+        <span>Overload Sessions</span>
+        <strong id="overloadCount">0 sessions</strong>
+      </div>
+    </section>
+    <div class="insight-warnings">
+      <p id="peakWarning" class="warning-message" hidden></p>
+      <p id="overloadWarning" class="warning-message danger" hidden></p>
+    </div>
+
+    <section class="panel">
+      <div class="section-head">
+        <h3>Completed Sessions</h3>
+        <span id="historyStatus">Loading...</span>
+      </div>
+      <div id="historyError" class="error-message" hidden></div>
+      <div id="emptyState" class="empty-state" hidden>No completed sessions yet. Start monitoring a load first.</div>
+      <div id="historyList" class="history-list"></div>
+    </section>
+  </main>
+
+  <script type="module">
+    import './js/history.js';
+  </script>
+</body>
+</html>

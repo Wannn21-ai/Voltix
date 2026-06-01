@@ -1,0 +1,58 @@
+{
+  "devices": {
+    "esp32-voltix-001": {
+      "config": {
+        "tariff": 1444.7,
+        "currency": "IDR",
+        "overloadThreshold": 2000,
+        "overloadWarningPercent": 99,
+        "loadPowerThreshold": 1,
+        "loadCurrentThreshold": 0.02,
+        "loadRemovedDelaySec": 2,
+        "offlineTimeoutSec": 300,
+        "checkpointIntervalSec": 30
+      },
+      "live": {
+        "system": {
+          "timestamp": 0,
+          "internet": false,
+          "relay": false,
+          "mode": "BOOT",
+          "systemMode": "BOOT",
+          "sessionState": "IDLE",
+          "deviceId": "esp32-voltix-001",
+          "pendingSync": 0
+        },
+        "device": {
+          "voltage": 0,
+          "current": 0,
+          "power": 0,
+          "apparent": 0,
+          "frequency": 0,
+          "powerFactor": 0,
+          "energy": 0,
+          "cost": 0,
+          "overload": false,
+          "loadDetected": false
+        },
+        "session": {
+          "active": false,
+          "sessionId": "",
+          "uid": "",
+          "deviceName": "",
+          "startTime": 0,
+          "elapsedSec": 0,
+          "energy": 0,
+          "cost": 0,
+          "endReason": "NONE"
+        }
+      },
+      "commands": {
+        "current": null,
+        "lastAck": null
+      },
+      "completedSessions": {}
+    }
+  },
+  "users": {}
+}

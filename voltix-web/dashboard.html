@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Voltix — Dashboard</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Voltix</div>
+    <div class="controls">
+      <span id="connectionStatus">Connecting...</span>
+      <a class="button-link" href="history.html">History</a>
+      <a class="button-link" href="settings.html">Settings</a>
+      <button id="logoutBtn">Logout</button>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="panel">
+      <h3>Device</h3>
+      <div class="row"><b>Device ID:</b> <span id="deviceId">esp32-voltix-001</span></div>
+      <div class="row"><b>Device Name:</b> <span id="deviceName">-</span></div>
+      <div class="row"><b>System Mode:</b> <span id="systemMode">-</span></div>
+      <div class="row"><b>Session State:</b> <span id="sessionState">-</span></div>
+      <div class="row"><b>Relay:</b> <span id="relayState">-</span></div>
+      <div class="row"><b>Load Detected:</b> <span id="loadDetected">-</span></div>
+      <div class="row"><b>Elapsed (s):</b> <span id="elapsedSec">-</span></div>
+    </section>
+
+    <section class="panel">
+      <h3>Power</h3>
+      <div class="row"><b>Voltage:</b> <span id="voltage">-</span></div>
+      <div class="row"><b>Current:</b> <span id="current">-</span></div>
+      <div class="row"><b>Power:</b> <span id="power">-</span></div>
+      <div class="row"><b>Apparent:</b> <span id="apparentPower">-</span></div>
+      <div class="row"><b>Frequency:</b> <span id="frequency">-</span></div>
+      <div class="row"><b>PF:</b> <span id="pf">-</span></div>
+      <div class="row"><b>PZEM Total Energy:</b> <span id="pzemTotalWh">-</span></div>
+    </section>
+
+    <section class="panel">
+      <h3>Session</h3>
+      <div class="row"><b>Session Energy (Wh):</b> <span id="sessionEnergyWh">-</span></div>
+      <div class="row"><b>Session Energy (kWh):</b> <span id="sessionEnergyKWh">-</span></div>
+      <div class="row"><b>Session Cost:</b> <span id="sessionCost">-</span></div>
+    </section>
+
+    <section class="insights-panel">
+      <div class="section-head">
+        <h3>Energy Insights</h3>
+        <span id="dashboardInsightStatus">Loading...</span>
+      </div>
+      <div class="summary-grid compact-summary-grid">
+        <div class="panel summary-card">
+          <span>Total Sessions</span>
+          <strong id="totalSessions">0 sessions</strong>
+        </div>
+        <div class="panel summary-card">
+          <span>Total Energy</span>
+          <strong id="totalEnergyKwh">0.000000 kWh</strong>
+          <small id="totalEnergyWh">0.000 Wh</small>
+        </div>
+        <div class="panel summary-card">
+          <span>Total Cost</span>
+          <strong id="totalCost">Rp 0</strong>
+        </div>
+        <div class="panel summary-card">
+          <span>Highest Peak Power</span>
+          <strong id="highestPeakPower">-</strong>
+          <small id="highestPeakPowerDevice">-</small>
+        </div>
+        <div class="panel summary-card">
+          <span>Most Energy Used</span>
+          <strong id="mostEnergyDevice">-</strong>
+          <small id="mostEnergyValue">-</small>
+        </div>
+        <div class="panel summary-card">
+          <span>Overload Sessions</span>
+          <strong id="overloadCount">0 sessions</strong>
+        </div>
+      </div>
+      <div class="insight-warnings">
+        <p id="peakWarning" class="warning-message" hidden></p>
+        <p id="overloadWarning" class="warning-message danger" hidden></p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h3>Commands</h3>
+      <label>Device name<br><input id="cmdDeviceName" placeholder="Unnamed Load"></label>
+      <div class="actions">
+        <button id="startBtn">START</button>
+        <button id="stopBtn">STOP</button>
+      </div>
+      <div class="command-status" id="commandStatus">No command sent</div>
+      <div class="divider"></div>
+      <h4>Last Ack</h4>
+      <pre id="lastAck">-</pre>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <script type="module">
+    import './js/dashboard.js';
+  </script>
+</body>
+</html>
