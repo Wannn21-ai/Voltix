@@ -6,6 +6,10 @@
 bool storageBegin();
 void storageUpdate();
 bool storageAppendCompletedSession(const CompletedSessionSnapshot& snapshot);
+bool storageWriteActiveSessionCheckpoint(const ActiveSessionCheckpoint& checkpoint);
+bool storageReadActiveSessionCheckpoint(ActiveSessionCheckpoint& checkpoint);
+bool storageReadActiveSessionCheckpointJson(String& out);
+bool storageClearActiveSessionCheckpoint();
 bool storageReadHistoryJson(String& out);
 int storageCountHistory();
 bool storageClearHistory();

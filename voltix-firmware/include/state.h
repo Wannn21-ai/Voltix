@@ -48,6 +48,28 @@ struct SessionData {
   bool pendingSync;
 };
 
+struct ActiveSessionCheckpoint {
+  char sessionId[24];
+  char uid[64];
+  char deviceName[32];
+  bool active;
+  SessionState sessionState;
+  unsigned long elapsedSec;
+  float energyWh;
+  float energyKwh;
+  float cost;
+  float peakPower;
+  float averagePower;
+  float tariff;
+  char currency[8];
+  float overloadThreshold;
+  SystemMode startMode;
+  uint64_t startUnixMs;
+  unsigned long lastCheckpointMs;
+  bool relayState;
+  char createdFrom[32];
+};
+
 struct CompletedSessionSnapshot {
   char id[24];
   char sessionId[24];
@@ -73,6 +95,8 @@ struct CompletedSessionSnapshot {
   char date[11];
   char time[9];
   uint64_t timestamp;
+  bool recovered;
+  const char* recoverySource;
 };
 
 extern AppConfig appConfig;

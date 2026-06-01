@@ -28,6 +28,7 @@ static char serialCommandBuffer[32];
 static size_t serialCommandLength = 0;
 static bool serialCommandOverflow = false;
 static bool wasWifiConnected = false;
+static bool wasRecoveryActive = false;
 
 static void printLiveData() {
   Serial.print("[live] mode=");
@@ -59,7 +60,7 @@ static void printLiveData() {
 }
 
 static void printHelp() {
-  Serial.println("Serial commands: on | off | toggle | status | time | history | count | pending | sync | clearhistory | help");
+  Serial.println("Serial commands: on | off | toggle | status | time | history | count | pending | sync | clearhistory | wificreds | clearwifi | restart | checkpoint | clearcheckpoint | recoverystatus | help");
 }
 
 static void printStatus() {
@@ -112,6 +113,8 @@ static void printStatus() {
   Serial.print(" peakPower=");
   Serial.print(sessionData.peakPowerW, 2);
   Serial.println("W");
+  Serial.print("[status] recovery=");
+  Serial.println(sessionRecoveryStatus());
 }
 
 static void printTimeStatus() {
@@ -259,6 +262,52 @@ static void processSerialCommand(char* rawCommand) {
     return;
   }
 
+  if (strcmp(command, "wificreds") == 0) {
+    printSavedWiFiStatus();
+    return;
+  }
+
+  if (strcmp(command, "clearwifi") == 0) {
+    clearWiFiCredentials();
+    Serial.println("[serial] OK: restarting after WiFi clear");
+    ESP.restart();
+    return;
+  }
+
+  if (strcmp(command, "restart") == 0) {
+    Serial.println("[serial] OK: restarting");
+    ESP.restart();
+    return;
+  }
+
+  if (strcmp(command, "checkpoint") == 0) {
+    String checkpointJson;
+    if (sessionReadCheckpointJson(checkpointJson)) {
+      Serial.println("[serial] OK: active session checkpoint JSON");
+      Serial.println(checkpointJson);
+    } else {
+      Serial.println("[serial] ERROR: failed to read active session checkpoint");
+    }
+    return;
+  }
+
+  if (strcmp(command, "clearcheckpoint") == 0) {
+    if (sessionClearCheckpoint()) {
+      Serial.println("[serial] OK: active session checkpoint cleared");
+    } else {
+      Serial.println("[serial] ERROR: failed to clear active session checkpoint");
+    }
+    return;
+  }
+
+  if (strcmp(command, "recoverystatus") == 0) {
+    Serial.print("[serial] recovery status=");
+    Serial.println(sessionRecoveryStatus());
+    Serial.print("[serial] recovery active=");
+    Serial.println(sessionRecoveryIsActive() ? "yes" : "no");
+    return;
+  }
+
   if (strcmp(command, "help") == 0) {
     Serial.println("[serial] OK: printing command list");
     printHelp();
@@ -308,16 +357,22 @@ void setup() {
   indicatorsBegin();
   displayBegin();
   storageBegin();
+  sessionBegin();
+  sessionRecoveryBegin();
   networkBegin();
   firebaseBegin();
-  sessionBegin();
 
-  relaySet(false);
-  displayShowBoot();
-  systemMode = networkIsConnected() ? SystemMode::ONLINE : SystemMode::OFFLINE;
+  if (sessionRecoveryIsActive()) {
+    displayShowStatus();
+  } else {
+    displayShowBoot();
+  }
+  systemMode = networkIsPortalActive() ? SystemMode::SETUP : (networkIsConnected() ? SystemMode::ONLINE : SystemMode::OFFLINE);
+  wasRecoveryActive = sessionRecoveryIsActive();
 
   Serial.println("[boot] Complete");
   printHelp();
+  networkMarkBootComplete();
 }
 
 void loop() {
@@ -325,6 +380,15 @@ void loop() {
 
   handleSerialCommands();
   networkUpdate();
+  sessionRecoveryUpdate();
+
+  const bool recoveryActive = sessionRecoveryIsActive();
+  if (wasRecoveryActive && !recoveryActive && networkIsConnected()) {
+    firebasePublishLive();
+    storageSyncPendingHistoryToFirebase();
+  }
+  wasRecoveryActive = recoveryActive;
+
   const bool wifiConnected = networkIsConnected();
   if (wifiConnected && !wasWifiConnected) {
     systemMode = SystemMode::ONLINE;
@@ -338,6 +402,7 @@ void loop() {
     lastPendingHistorySyncMs = now;
   }
   if (!wifiConnected && wasWifiConnected) {
+    sessionWriteCheckpoint();
     systemMode = SystemMode::OFFLINE;
   }
   wasWifiConnected = wifiConnected;
@@ -346,7 +411,7 @@ void loop() {
   indicatorsUpdate();
   displayUpdate();
 
-  if (now - lastSensorUpdateMs >= Config::SENSOR_INTERVAL_MS) {
+  if (!recoveryActive && now - lastSensorUpdateMs >= Config::SENSOR_INTERVAL_MS) {
     lastSensorUpdateMs = now;
     sensorUpdate();
 
@@ -357,7 +422,7 @@ void loop() {
     }
   }
 
-  if (now - lastSessionUpdateMs >= Config::SESSION_INTERVAL_MS) {
+  if (!recoveryActive && now - lastSessionUpdateMs >= Config::SESSION_INTERVAL_MS) {
     lastSessionUpdateMs = now;
     sessionUpdate();
   }

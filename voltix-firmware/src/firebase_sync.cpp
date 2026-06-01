@@ -326,6 +326,10 @@ bool firebasePushCompletedSession(const CompletedSessionSnapshot& snapshot) {
   doc["startMode"] = systemModeToString(snapshot.startMode);
   doc["endMode"] = systemModeToString(snapshot.endMode);
   doc["endReason"] = endReasonToString(snapshot.endReason);
+  if (snapshot.recovered) {
+    doc["recovered"] = true;
+    doc["recoverySource"] = snapshot.recoverySource == nullptr ? "active_session_checkpoint" : snapshot.recoverySource;
+  }
   doc["date"] = snapshot.date;
   doc["time"] = snapshot.time;
   doc["timestamp"] = snapshot.timestamp;

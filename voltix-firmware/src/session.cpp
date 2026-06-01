@@ -2,12 +2,33 @@
 #include "firebase_sync.h"
 #include "network.h"
 #include "relay.h"
+#include "sensor.h"
 #include "state.h"
 #include "storage.h"
 #include "time_sync.h"
 
 #include <Arduino.h>
 #include <string.h>
+
+namespace {
+constexpr unsigned long RECOVERY_SETTLE_MS = 1200UL;
+
+enum class RecoveryState {
+  IDLE,
+  SETTLING,
+  RESUMED,
+  FINALIZED,
+  FAILED
+};
+
+ActiveSessionCheckpoint recoveryCheckpoint;
+RecoveryState recoveryState = RecoveryState::IDLE;
+unsigned long recoveryStartedAtMs = 0;
+unsigned long lastCheckpointWriteMs = 0;
+unsigned long elapsedBeforeRecoveryMs = 0;
+unsigned long resumeMillis = 0;
+char recoveryStatusText[48] = "idle";
+}
 
 static void updateSessionTotals() {
   const unsigned long now = millis();
@@ -24,7 +45,11 @@ static void updateSessionTotals() {
     }
   }
 
-  sessionData.durationMs = now - sessionData.startedAtMs;
+  if (resumeMillis > 0) {
+    sessionData.durationMs = elapsedBeforeRecoveryMs + (now - resumeMillis);
+  } else {
+    sessionData.durationMs = now - sessionData.startedAtMs;
+  }
   sessionData.energyKwh = sessionData.energyWh / 1000.0f;
   if (sensorData.power > sessionData.peakPowerW) {
     sessionData.peakPowerW = sensorData.power;
@@ -69,7 +94,112 @@ static CompletedSessionSnapshot makeFinalSnapshot(EndReason reason) {
   strlcpy(snapshot.date, getDateString().c_str(), sizeof(snapshot.date));
   strlcpy(snapshot.time, getTimeString().c_str(), sizeof(snapshot.time));
   snapshot.timestamp = getUnixMs();
+  snapshot.recovered = false;
+  snapshot.recoverySource = nullptr;
   return snapshot;
+}
+
+static bool shouldCheckpointState() {
+  return sessionData.state == SessionState::WAITING_LOAD ||
+         sessionData.state == SessionState::MONITORING ||
+         sessionData.state == SessionState::OVERLOAD;
+}
+
+static void fillCheckpointFromSession(ActiveSessionCheckpoint& checkpoint) {
+  memset(&checkpoint, 0, sizeof(checkpoint));
+  strlcpy(checkpoint.sessionId, sessionData.sessionId, sizeof(checkpoint.sessionId));
+  strlcpy(checkpoint.uid, sessionData.uid, sizeof(checkpoint.uid));
+  strlcpy(checkpoint.deviceName, sessionData.deviceName, sizeof(checkpoint.deviceName));
+  checkpoint.active = shouldCheckpointState();
+  checkpoint.sessionState = sessionData.state;
+  checkpoint.elapsedSec = sessionData.durationMs / 1000UL;
+  checkpoint.energyWh = sessionData.energyWh;
+  checkpoint.energyKwh = sessionData.energyKwh;
+  checkpoint.cost = sessionData.cost;
+  checkpoint.peakPower = sessionData.peakPowerW;
+  checkpoint.averagePower = sessionData.averagePowerW;
+  checkpoint.tariff = appConfig.tariffPerKwh;
+  strlcpy(checkpoint.currency, appConfig.currency, sizeof(checkpoint.currency));
+  checkpoint.overloadThreshold = appConfig.overloadThresholdW;
+  checkpoint.startMode = sessionData.startMode;
+  checkpoint.startUnixMs = getUnixMs() > sessionData.durationMs ? getUnixMs() - sessionData.durationMs : 0;
+  checkpoint.lastCheckpointMs = millis();
+  checkpoint.relayState = relayIsOn();
+  strlcpy(checkpoint.createdFrom, "ESP32", sizeof(checkpoint.createdFrom));
+}
+
+static void restoreSessionFromCheckpoint(const ActiveSessionCheckpoint& checkpoint, SessionState state) {
+  strlcpy(sessionData.sessionId, checkpoint.sessionId, sizeof(sessionData.sessionId));
+  strlcpy(sessionData.uid, checkpoint.uid, sizeof(sessionData.uid));
+  strlcpy(sessionData.deviceName, checkpoint.deviceName, sizeof(sessionData.deviceName));
+  sessionData.state = state;
+  sessionData.endReason = EndReason::NONE;
+  sessionData.startedAtMs = millis();
+  sessionData.endedAtMs = 0;
+  sessionData.lastUpdateMs = millis();
+  elapsedBeforeRecoveryMs = checkpoint.elapsedSec * 1000UL;
+  resumeMillis = millis();
+  sessionData.durationMs = elapsedBeforeRecoveryMs;
+  sessionData.startEnergyKwh = sensorData.energy;
+  sessionData.energyWh = checkpoint.energyWh;
+  sessionData.energyKwh = checkpoint.energyKwh > 0.0f ? checkpoint.energyKwh : checkpoint.energyWh / 1000.0f;
+  sessionData.cost = checkpoint.cost;
+  sessionData.averagePowerW = checkpoint.averagePower;
+  sessionData.peakPowerW = checkpoint.peakPower;
+  sessionData.pendingSync = false;
+  sessionData.startMode = checkpoint.startMode;
+
+  if (checkpoint.tariff > 0.0f) {
+    appConfig.tariffPerKwh = checkpoint.tariff;
+  }
+  if (checkpoint.overloadThreshold > 0.0f) {
+    appConfig.overloadThresholdW = checkpoint.overloadThreshold;
+  }
+  if (checkpoint.currency[0] != '\0') {
+    strlcpy(appConfig.currency, checkpoint.currency, sizeof(appConfig.currency));
+  }
+}
+
+static CompletedSessionSnapshot makeRecoveredSnapshot(const ActiveSessionCheckpoint& checkpoint, EndReason reason) {
+  restoreSessionFromCheckpoint(checkpoint, SessionState::MONITORING);
+  sessionData.endedAtMs = millis();
+  sessionData.endReason = reason;
+  sessionData.durationMs = checkpoint.elapsedSec * 1000UL;
+  sessionData.cost = sessionData.energyKwh * appConfig.tariffPerKwh;
+
+  CompletedSessionSnapshot snapshot = makeFinalSnapshot(reason);
+  snapshot.durationSec = checkpoint.elapsedSec;
+  snapshot.recovered = true;
+  snapshot.recoverySource = "active_session_checkpoint";
+  return snapshot;
+}
+
+static void finalizeRecoveredNoLoad() {
+  const CompletedSessionSnapshot snapshot = makeRecoveredSnapshot(recoveryCheckpoint, EndReason::LOAD_REMOVED_AFTER_POWER_LOSS);
+  sessionData.state = SessionState::FINISHING;
+  relaySet(false);
+
+  const bool saved = storageAppendCompletedSession(snapshot);
+  bool queued = false;
+  sessionData.pendingSync = saved;
+
+  if (saved) {
+    storageClearActiveSessionCheckpoint();
+    if (networkIsConnected()) {
+      queued = firebasePushCompletedSession(snapshot);
+      if (queued) {
+        storageMarkSessionQueued(snapshot.sessionId);
+        sessionData.pendingSync = false;
+      }
+    } else {
+      Serial.println("[recovery] WiFi offline, recovered session saved as pending sync");
+    }
+  }
+
+  sessionData.state = SessionState::FINISHED;
+  recoveryState = saved ? RecoveryState::FINALIZED : RecoveryState::FAILED;
+  strlcpy(recoveryStatusText, saved ? "finalized_no_load" : "finalize_failed", sizeof(recoveryStatusText));
+  Serial.println("[recovery] no load found, session finalized");
 }
 
 void sessionBegin() {
@@ -101,10 +231,13 @@ void sessionStart(const char* deviceName) {
   sessionData.averagePowerW = 0.0f;
   sessionData.peakPowerW = 0.0f;
   sessionData.pendingSync = false;
+  elapsedBeforeRecoveryMs = 0;
+  resumeMillis = 0;
 
   relaySet(true);
   Serial.print("[session] Started for device ");
   Serial.println(sessionData.deviceName);
+  sessionWriteCheckpoint();
 }
 
 void sessionSetRemoteContext(const char* uid, const char* sessionId) {
@@ -114,6 +247,7 @@ void sessionSetRemoteContext(const char* uid, const char* sessionId) {
   if (sessionId != nullptr && sessionId[0] != '\0') {
     strlcpy(sessionData.sessionId, sessionId, sizeof(sessionData.sessionId));
   }
+  sessionWriteCheckpoint();
 }
 
 void sessionStop(EndReason reason) {
@@ -123,7 +257,6 @@ void sessionStop(EndReason reason) {
 
   updateSessionTotals();
   sessionData.endedAtMs = millis();
-  sessionData.durationMs = sessionData.endedAtMs - sessionData.startedAtMs;
   sessionData.endReason = reason;
   sessionData.state = SessionState::FINISHING;
   const CompletedSessionSnapshot snapshot = makeFinalSnapshot(reason);
@@ -137,6 +270,7 @@ void sessionStop(EndReason reason) {
   sessionData.pendingSync = saved;
 
   if (saved) {
+    storageClearActiveSessionCheckpoint();
     if (networkIsConnected()) {
       queued = firebasePushCompletedSession(snapshot);
       if (queued) {
@@ -176,6 +310,8 @@ void sessionStop(EndReason reason) {
   Serial.println(timestampText);
 
   sessionData.state = SessionState::FINISHED;
+  elapsedBeforeRecoveryMs = 0;
+  resumeMillis = 0;
   Serial.print("[session] Finished name=");
   Serial.print(sessionData.deviceName);
   Serial.print(" durationSec=");
@@ -203,6 +339,13 @@ void sessionUpdate() {
 
   updateSessionTotals();
 
+  const unsigned long now = millis();
+  const unsigned long checkpointIntervalMs = max(1UL, appConfig.checkpointIntervalSec) * 1000UL;
+  if (shouldCheckpointState() &&
+      (lastCheckpointWriteMs == 0 || now - lastCheckpointWriteMs >= checkpointIntervalMs)) {
+    sessionWriteCheckpoint();
+  }
+
   if (sensorData.valid && sensorData.power >= appConfig.overloadThresholdW) {
     sessionData.state = SessionState::OVERLOAD;
     sessionStop(EndReason::OVERLOAD);
@@ -226,4 +369,76 @@ bool sessionIsActive() {
          sessionData.state == SessionState::MONITORING ||
          sessionData.state == SessionState::OVERLOAD ||
          sessionData.state == SessionState::FINISHING;
+}
+
+void sessionRecoveryBegin() {
+  recoveryState = RecoveryState::IDLE;
+  strlcpy(recoveryStatusText, "idle", sizeof(recoveryStatusText));
+
+  if (!storageReadActiveSessionCheckpoint(recoveryCheckpoint) || !recoveryCheckpoint.active) {
+    return;
+  }
+
+  Serial.println("[recovery] active session checkpoint found");
+  recoveryState = RecoveryState::SETTLING;
+  strlcpy(recoveryStatusText, "checking_session", sizeof(recoveryStatusText));
+  recoveryStartedAtMs = millis();
+
+  if (recoveryCheckpoint.relayState) {
+    relaySet(true);
+  }
+}
+
+void sessionRecoveryUpdate() {
+  if (recoveryState != RecoveryState::SETTLING) {
+    return;
+  }
+
+  if (millis() - recoveryStartedAtMs < RECOVERY_SETTLE_MS) {
+    return;
+  }
+
+  sensorUpdate();
+  if (sensorData.loadDetected) {
+    restoreSessionFromCheckpoint(recoveryCheckpoint, SessionState::MONITORING);
+    relaySet(true);
+    sessionWriteCheckpoint();
+    recoveryState = RecoveryState::RESUMED;
+    strlcpy(recoveryStatusText, "resumed", sizeof(recoveryStatusText));
+    Serial.println("[recovery] session resumed");
+    return;
+  }
+
+  finalizeRecoveredNoLoad();
+}
+
+bool sessionRecoveryIsActive() {
+  return recoveryState == RecoveryState::SETTLING;
+}
+
+const char* sessionRecoveryStatus() {
+  return recoveryStatusText;
+}
+
+bool sessionWriteCheckpoint() {
+  if (!shouldCheckpointState()) {
+    return false;
+  }
+
+  updateSessionTotals();
+  ActiveSessionCheckpoint checkpoint;
+  fillCheckpointFromSession(checkpoint);
+  const bool saved = storageWriteActiveSessionCheckpoint(checkpoint);
+  if (saved) {
+    lastCheckpointWriteMs = millis();
+  }
+  return saved;
+}
+
+bool sessionReadCheckpointJson(String& out) {
+  return storageReadActiveSessionCheckpointJson(out);
+}
+
+bool sessionClearCheckpoint() {
+  return storageClearActiveSessionCheckpoint();
 }

@@ -14,7 +14,7 @@ constexpr const char* PREF_NAMESPACE = "voltix";
 constexpr const char* PREF_KEY_WIFI_SSID = "wifi_ssid";
 constexpr const char* PREF_KEY_WIFI_PASS = "wifi_pass";
 constexpr const char* PREF_KEY_TARIFF = "tariff";
-constexpr const char* PREF_KEY_OVERLOAD = "overloadW";
+constexpr const char* PREF_KEY_OVERLOAD = "overloadThreshold";
 constexpr const char* SETUP_AP_SSID = "Voltix-Setup";
 constexpr const char* SETUP_AP_PASSWORD = "12345678";
 constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = 15000UL;
@@ -22,6 +22,12 @@ constexpr unsigned long WIFI_RECONNECT_INTERVAL_MS = 10000UL;
 constexpr unsigned long RESTART_DELAY_MS = 1200UL;
 constexpr unsigned long BOOT_BUTTON_HOLD_MS = 5000UL;
 constexpr byte DNS_PORT = 53;
+
+enum class WifiSource {
+  NONE,
+  SAVED,
+  FALLBACK
+};
 
 static unsigned long lastReconnectAttemptMs = 0;
 static unsigned long connectStartedAtMs = 0;
@@ -32,10 +38,13 @@ static bool wasConnecting = false;
 static bool wasConnected = false;
 static bool restartPending = false;
 static bool bootButtonClearTriggered = false;
+static bool bootComplete = false;
+static bool bootButtonArmed = false;
 static String savedWifiSsid;
 static String savedWifiPassword;
 static String activeWifiSsid;
 static String activeWifiPassword;
+static WifiSource activeWifiSource = WifiSource::NONE;
 static WebServer portalServer(80);
 static DNSServer dnsServer;
 static const IPAddress setupIp(192, 168, 4, 1);
@@ -116,6 +125,12 @@ void handleSave() {
   appConfig.overloadThresholdW = overloadThreshold > 0.0f ? overloadThreshold : Config::OVERLOAD_THRESHOLD_W;
   saveLocalConfig();
 
+  Serial.print("[portal] Saved WiFi SSID=");
+  Serial.println(ssid);
+  Serial.print("[portal] Saved local config tariff=");
+  Serial.print(appConfig.tariffPerKwh, 2);
+  Serial.print(" overload=");
+  Serial.println(appConfig.overloadThresholdW, 1);
   Serial.println("[portal] Credentials saved, restarting");
   portalServer.send(200, "text/html", "<!doctype html><html><body><h1>Saved</h1><p>Voltix is restarting...</p></body></html>");
   scheduleRestart();
@@ -154,17 +169,20 @@ void startSetupPortal() {
 
   portalActive = true;
   wasConnecting = false;
+  activeWifiSource = WifiSource::NONE;
   systemMode = SystemMode::SETUP;
 
+  Serial.println("[network] Starting captive portal");
   Serial.print("[portal] AP started SSID=");
   Serial.print(SETUP_AP_SSID);
   Serial.print(" IP=");
   Serial.println(WiFi.softAPIP());
 }
 
-void startWiFiConnection(const String& ssid, const String& password, const char* source) {
+void startWiFiConnection(const String& ssid, const String& password, WifiSource source) {
   activeWifiSsid = ssid;
   activeWifiPassword = password;
+  activeWifiSource = source;
   WiFi.mode(WIFI_STA);
   WiFi.begin(activeWifiSsid.c_str(), activeWifiPassword.c_str());
   systemMode = SystemMode::TRANSITION;
@@ -172,9 +190,11 @@ void startWiFiConnection(const String& ssid, const String& password, const char*
   connectStartedAtMs = millis();
   wasConnecting = true;
 
-  Serial.print("[network] Connecting to ");
-  Serial.print(source);
-  Serial.println(" WiFi...");
+  if (source == WifiSource::SAVED) {
+    Serial.println("[network] Trying saved WiFi...");
+  } else if (source == WifiSource::FALLBACK) {
+    Serial.println("[network] Trying credentials.h fallback WiFi...");
+  }
 }
 
 bool credentialsFallbackAvailable() {
@@ -182,10 +202,19 @@ bool credentialsFallbackAvailable() {
 }
 
 void updateBootButton() {
+  if (!bootComplete) {
+    return;
+  }
+
   const bool pressed = digitalRead(Config::BUTTON_PIN) == LOW;
   if (!pressed) {
     bootButtonPressedAtMs = 0;
     bootButtonClearTriggered = false;
+    bootButtonArmed = true;
+    return;
+  }
+
+  if (!bootButtonArmed) {
     return;
   }
 
@@ -196,7 +225,7 @@ void updateBootButton() {
 
   if (!bootButtonClearTriggered && millis() - bootButtonPressedAtMs >= BOOT_BUTTON_HOLD_MS) {
     bootButtonClearTriggered = true;
-    Serial.println("[network] BOOT button held, clearing WiFi credentials");
+    Serial.println("[network] BOOT long press detected, clearing WiFi");
     clearWiFiCredentials();
     scheduleRestart();
   }
@@ -205,17 +234,17 @@ void updateBootButton() {
 
 void networkBegin() {
   pinMode(Config::BUTTON_PIN, INPUT_PULLUP);
+  bootButtonArmed = digitalRead(Config::BUTTON_PIN) == HIGH;
+  Serial.println("[network] Normal reset, keeping saved WiFi");
+  Serial.println("[network] Checking saved WiFi credentials...");
 
-  if (loadSavedWiFiCredentials()) {
-    Serial.println("[network] Connecting to saved WiFi...");
-    startWiFiConnection(savedWifiSsid, savedWifiPassword, "saved");
+  if (loadSavedWiFiCredentials(savedWifiSsid, savedWifiPassword)) {
+    startWiFiConnection(savedWifiSsid, savedWifiPassword, WifiSource::SAVED);
     return;
   }
 
   if (credentialsFallbackAvailable()) {
-    Serial.print("[network] Using credentials.h fallback SSID=");
-    Serial.println(WIFI_SSID);
-    startWiFiConnection(String(WIFI_SSID), String(WIFI_PASSWORD), "credentials.h fallback");
+    startWiFiConnection(String(WIFI_SSID), String(WIFI_PASSWORD), WifiSource::FALLBACK);
     return;
   }
 
@@ -242,7 +271,13 @@ void networkUpdate() {
     wasConnected = connected;
     systemMode = connected ? SystemMode::ONLINE : SystemMode::OFFLINE;
     if (connected) {
-      Serial.println("[network] WiFi reconnected");
+      if (activeWifiSource == WifiSource::SAVED) {
+        Serial.println("[network] Saved WiFi connected");
+      } else if (activeWifiSource == WifiSource::FALLBACK) {
+        Serial.println("[network] Fallback WiFi connected");
+      } else {
+        Serial.println("[network] WiFi reconnected");
+      }
       Serial.print("[network] IP=");
       Serial.println(WiFi.localIP());
       if (sessionData.state == SessionState::MONITORING) {
@@ -254,7 +289,15 @@ void networkUpdate() {
   }
 
   if (!connected && wasConnecting && millis() - connectStartedAtMs >= WIFI_CONNECT_TIMEOUT_MS) {
-    Serial.println("[network] WiFi failed, starting setup portal");
+    if (activeWifiSource == WifiSource::SAVED) {
+      Serial.println("[network] Saved WiFi failed");
+      if (credentialsFallbackAvailable()) {
+        startWiFiConnection(String(WIFI_SSID), String(WIFI_PASSWORD), WifiSource::FALLBACK);
+        return;
+      }
+    } else if (activeWifiSource == WifiSource::FALLBACK) {
+      Serial.println("[network] Fallback WiFi failed");
+    }
     startSetupPortal();
     return;
   }
@@ -281,24 +324,28 @@ bool networkIsPortalActive() {
   return portalActive;
 }
 
-bool loadSavedWiFiCredentials() {
+void networkMarkBootComplete() {
+  bootComplete = true;
+}
+
+bool loadSavedWiFiCredentials(String& ssid, String& pass) {
   Preferences prefs;
   if (!prefs.begin(PREF_NAMESPACE, true)) {
     Serial.println("[network] No saved WiFi credentials");
     return false;
   }
 
-  savedWifiSsid = prefs.getString(PREF_KEY_WIFI_SSID, "");
-  savedWifiPassword = prefs.getString(PREF_KEY_WIFI_PASS, "");
+  ssid = prefs.getString(PREF_KEY_WIFI_SSID, "");
+  pass = prefs.getString(PREF_KEY_WIFI_PASS, "");
   prefs.end();
 
-  if (savedWifiSsid.length() == 0) {
+  if (ssid.length() == 0) {
     Serial.println("[network] No saved WiFi credentials");
     return false;
   }
 
-  Serial.print("[network] Loaded saved WiFi SSID=");
-  Serial.println(savedWifiSsid);
+  Serial.print("[network] Saved WiFi found: ");
+  Serial.println(ssid);
   return true;
 }
 
@@ -328,6 +375,7 @@ void clearWiFiCredentials() {
   prefs.end();
   savedWifiSsid = "";
   savedWifiPassword = "";
+  Serial.println("[network] saved WiFi cleared");
 }
 
 bool hasSavedWiFiCredentials() {
@@ -338,6 +386,20 @@ bool hasSavedWiFiCredentials() {
   const bool hasSsid = prefs.getString(PREF_KEY_WIFI_SSID, "").length() > 0;
   prefs.end();
   return hasSsid;
+}
+
+void printSavedWiFiStatus() {
+  String ssid;
+  String pass;
+  const bool hasSaved = loadSavedWiFiCredentials(ssid, pass);
+  Serial.print("[network] Saved WiFi: ");
+  Serial.println(hasSaved ? "yes" : "no");
+  if (hasSaved) {
+    Serial.print("[network] Saved SSID: ");
+    Serial.println(ssid);
+  }
+  Serial.print("[network] Fallback credentials.h SSID: ");
+  Serial.println(credentialsFallbackAvailable() ? WIFI_SSID : "no");
 }
 
 void loadLocalConfig() {
