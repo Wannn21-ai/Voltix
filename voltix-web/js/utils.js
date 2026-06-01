@@ -44,21 +44,152 @@ export function applyTheme(theme = loadUiSettings().theme){
   document.documentElement.dataset.theme = normalized;
 }
 
-export function initShell({ active, user, onLogout } = {}){
+export function renderShell(activePage, pageTitle, { user = null, onLogout = null } = {}){
   applyTheme();
-  document.querySelectorAll('[data-nav]').forEach(link=>{
-    link.classList.toggle('active', link.dataset.nav === active);
-  });
 
-  const userEmail = qs('userEmail');
-  if(userEmail && user){
-    userEmail.textContent = user.email ?? user.uid ?? 'Signed in';
+  const sidebar = qs('sidebar');
+  const topbar = qs('topbar');
+  const mainContent = qs('main-content');
+  if(!sidebar || !topbar || !mainContent){
+    console.warn('[shell] missing sidebar/topbar container');
+    return;
   }
 
+  sidebar.innerHTML = `
+    <div class="brand-block">
+      <div class="brand-mark">V</div>
+      <div>
+        <h1 class="brand-title">Voltix</h1>
+        <div class="brand-subtitle">Electric energy monitor</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav" aria-label="Main navigation">
+      ${navLink('dashboard', 'Dashboard', 'dashboard.html', activePage)}
+      ${navLink('history', 'History', 'history.html', activePage)}
+      ${navLink('advanced', 'Advanced', 'advanced.html', activePage)}
+      ${navLink('settings', 'Settings', 'settings.html', activePage)}
+    </nav>
+    <div class="sidebar-footer">
+      <div id="userEmail" class="user-email">${safeText(user?.email ?? user?.uid, 'Signed in')}</div>
+      <button id="logoutBtn" class="button-secondary" type="button">Logout</button>
+    </div>
+  `;
+
+  topbar.innerHTML = `
+    <button id="menu-btn" class="topbar-menu-btn" type="button" aria-label="Toggle sidebar" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="topbar-title-block">
+      <h2 class="page-title">${safeText(pageTitle, 'Voltix')}</h2>
+      ${topbarSubtitle(activePage)}
+    </div>
+    <div class="topbar-actions">
+      ${topbarActions(activePage)}
+    </div>
+  `;
+
+  const backdrop = ensureSidebarBackdrop();
+  const menuBtn = qs('menu-btn');
   const logoutBtn = qs('logoutBtn');
+
   if(logoutBtn && onLogout){
     logoutBtn.addEventListener('click', onLogout);
   }
+
+  menuBtn?.addEventListener('click', ()=>{
+    if(isMobileSidebar()){
+      const isOpen = sidebar.classList.toggle('open');
+      backdrop.classList.toggle('show', isOpen);
+      menuBtn.setAttribute('aria-expanded', String(isOpen));
+      return;
+    }
+
+    const isCollapsed = sidebar.classList.toggle('collapsed');
+    mainContent.classList.toggle('sidebar-collapsed', isCollapsed);
+    menuBtn.setAttribute('aria-expanded', String(!isCollapsed));
+  });
+
+  backdrop.addEventListener('click', ()=>{
+    sidebar.classList.remove('open');
+    backdrop.classList.remove('show');
+    menuBtn?.setAttribute('aria-expanded', 'false');
+  });
+
+  window.addEventListener('resize', ()=>{
+    if(isMobileSidebar()){
+      mainContent.classList.remove('sidebar-collapsed');
+      sidebar.classList.remove('collapsed');
+      return;
+    }
+    sidebar.classList.remove('open');
+    backdrop.classList.remove('show');
+    menuBtn?.setAttribute('aria-expanded', String(!sidebar.classList.contains('collapsed')));
+  });
+
+  console.log('[shell] rendered', activePage);
+}
+
+export function initShell(options = {}){
+  renderShell(options.active, pageTitleFor(options.active), options);
+}
+
+function navLink(page, label, href, activePage){
+  const active = page === activePage ? ' active' : '';
+  return `<a class="${active.trim() ? `active` : ''}" data-nav="${page}" href="${href}">${label}</a>`;
+}
+
+function pageTitleFor(activePage){
+  const titles = {
+    dashboard: 'Dashboard',
+    history: 'History',
+    advanced: 'Advanced',
+    settings: 'Settings'
+  };
+  return titles[activePage] ?? 'Voltix';
+}
+
+function topbarSubtitle(activePage){
+  if(activePage === 'dashboard'){
+    return '<p class="page-kicker">Real-time load monitoring for device <span id="deviceId">esp32-voltix-001</span></p>';
+  }
+  if(activePage === 'history'){
+    return '<p class="page-kicker">Completed sessions copied from the device queue into your account.</p>';
+  }
+  if(activePage === 'settings'){
+    return '<p class="page-kicker">Device configuration and personal dashboard preferences.</p>';
+  }
+  if(activePage === 'advanced'){
+    return '<p class="page-kicker">How Voltix measures, protects, and syncs sessions.</p>';
+  }
+  return '';
+}
+
+function topbarActions(activePage){
+  if(activePage === 'dashboard'){
+    return '<span id="connectionStatus" class="status-pill">Connecting...</span><a class="button-link button-secondary" href="history.html">History</a>';
+  }
+  if(activePage === 'history'){
+    return '<button id="refreshBtn" type="button">Refresh</button>';
+  }
+  if(activePage === 'settings'){
+    return '<span id="settingsStatus" class="status-pill">Loading...</span>';
+  }
+  return '<span class="status-pill">Voltix</span>';
+}
+
+function ensureSidebarBackdrop(){
+  let backdrop = qs('sidebar-backdrop');
+  if(!backdrop){
+    backdrop = document.createElement('div');
+    backdrop.id = 'sidebar-backdrop';
+    backdrop.className = 'sidebar-backdrop';
+    document.body.appendChild(backdrop);
+  }
+  return backdrop;
+}
+
+function isMobileSidebar(){
+  return window.matchMedia('(max-width: 768px)').matches;
 }
 
 export function safeText(value, empty = '-'){

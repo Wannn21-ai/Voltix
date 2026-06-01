@@ -16,9 +16,9 @@ import {
   formatUnit,
   formatVoltage,
   formatYesNo,
-  initShell,
   numberValue,
   qs,
+  renderShell,
   safeText,
   sessionEnergyKwh,
   showToast
@@ -45,15 +45,14 @@ const state = {
 async function init(){
   applyTheme();
   state.user = await requireAuth();
-  bindEls();
-  initShell({
-    active: 'dashboard',
+  renderShell('dashboard', 'Dashboard', {
     user: state.user,
     onLogout: async ()=>{
       await logout();
       window.location.href = 'login.html';
     }
   });
+  bindEls();
   els.deviceId.textContent = DEVICE_ID;
   setupCommands();
   setupCharts();

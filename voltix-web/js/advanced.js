@@ -1,11 +1,10 @@
 import { logout, requireAuth } from './auth.js';
-import { applyTheme, initShell } from './utils.js';
+import { applyTheme, renderShell } from './utils.js';
 
 async function init(){
   applyTheme();
   const user = await requireAuth();
-  initShell({
-    active: 'advanced',
+  renderShell('advanced', 'Advanced', {
     user,
     onLogout: async ()=>{
       await logout();

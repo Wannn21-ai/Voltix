@@ -5,10 +5,10 @@ import {
   applyTheme,
   csvEscape,
   downloadText,
-  initShell,
   loadUiSettings,
   normalizeSessionMap,
   qs,
+  renderShell,
   saveUiSettings,
   showToast
 } from './utils.js';
@@ -42,15 +42,14 @@ let currentUser = null;
 async function init(){
   applyTheme();
   currentUser = await requireAuth();
-  bindEls();
-  initShell({
-    active: 'settings',
+  renderShell('settings', 'Settings', {
     user: currentUser,
     onLogout: async ()=>{
       await logout();
       window.location.href = 'login.html';
     }
   });
+  bindEls();
 
   els.settingsForm.addEventListener('submit', handleSave);
   els.exportUserHistoryBtn.addEventListener('click', exportUserHistory);

@@ -9,38 +9,11 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand-block">
-        <div class="brand-mark">V</div>
-        <div>
-          <h1 class="brand-title">Voltix</h1>
-          <div class="brand-subtitle">Energy monitor</div>
-        </div>
-      </div>
-      <nav class="nav-list" aria-label="Main">
-        <a class="nav-link" data-nav="dashboard" href="dashboard.html">Dashboard</a>
-        <a class="nav-link" data-nav="history" href="history.html">History</a>
-        <a class="nav-link" data-nav="advanced" href="advanced.html">Advanced</a>
-        <a class="nav-link" data-nav="settings" href="settings.html">Settings</a>
-      </nav>
-      <div class="sidebar-footer">
-        <div id="userEmail" class="user-email">Signed in</div>
-        <button id="logoutBtn" class="button-secondary" type="button">Logout</button>
-      </div>
-    </aside>
+  <div class="app-layout">
+    <aside class="sidebar" id="sidebar"></aside>
 
-    <div class="main-area">
-      <header class="topbar">
-        <div>
-          <h2 class="page-title">Live Dashboard</h2>
-          <p class="page-kicker">Real-time load monitoring for device <span id="deviceId">esp32-voltix-001</span></p>
-        </div>
-        <div class="topbar-actions">
-          <span id="connectionStatus" class="status-pill">Connecting...</span>
-          <a class="button-link button-secondary" href="history.html">History</a>
-        </div>
-      </header>
+    <div class="main-content" id="main-content">
+      <header class="topbar" id="topbar"></header>
 
       <main class="page-content dashboard-grid">
         <section class="panel full-width">

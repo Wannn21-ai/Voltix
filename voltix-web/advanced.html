@@ -8,34 +8,11 @@
   <link rel="stylesheet" href="css/dashboard.css">
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand-block">
-        <div class="brand-mark">V</div>
-        <div>
-          <h1 class="brand-title">Voltix</h1>
-          <div class="brand-subtitle">Energy monitor</div>
-        </div>
-      </div>
-      <nav class="nav-list" aria-label="Main">
-        <a class="nav-link" data-nav="dashboard" href="dashboard.html">Dashboard</a>
-        <a class="nav-link" data-nav="history" href="history.html">History</a>
-        <a class="nav-link" data-nav="advanced" href="advanced.html">Advanced</a>
-        <a class="nav-link" data-nav="settings" href="settings.html">Settings</a>
-      </nav>
-      <div class="sidebar-footer">
-        <div id="userEmail" class="user-email">Signed in</div>
-        <button id="logoutBtn" class="button-secondary" type="button">Logout</button>
-      </div>
-    </aside>
+  <div class="app-layout">
+    <aside class="sidebar" id="sidebar"></aside>
 
-    <div class="main-area">
-      <header class="topbar">
-        <div>
-          <h2 class="page-title">Advanced</h2>
-          <p class="page-kicker">How Voltix measures, protects, and syncs sessions.</p>
-        </div>
-      </header>
+    <div class="main-content" id="main-content">
+      <header class="topbar" id="topbar"></header>
 
       <main class="page-content advanced-article">
         <section class="panel advanced-hero">

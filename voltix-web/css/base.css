@@ -125,6 +125,7 @@ html,
 body {
   min-height: 100%;
   margin: 0;
+  overflow-x: hidden;
 }
 
 body {
@@ -226,15 +227,19 @@ label strong {
   color: var(--text);
 }
 
+.app-layout,
 .app-shell {
-  display: grid;
-  grid-template-columns: 250px minmax(0, 1fr);
+  --sidebar-width: 250px;
   min-height: 100vh;
 }
 
 .sidebar {
-  position: sticky;
+  position: fixed;
   top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 12;
+  width: var(--sidebar-width);
   height: 100vh;
   padding: 1rem;
   border-right: 1px solid var(--border-accent);
@@ -242,10 +247,17 @@ label strong {
     linear-gradient(180deg, rgba(16, 27, 61, 0.96), rgba(11, 19, 43, 0.96)),
     var(--bg-base);
   backdrop-filter: blur(16px);
+  transform: translateX(0);
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+  will-change: transform;
 }
 
 :root[data-theme="light"] .sidebar {
   background: rgba(255, 255, 255, 0.86);
+}
+
+.sidebar.collapsed {
+  transform: translateX(-100%);
 }
 
 .brand-block {
@@ -281,11 +293,13 @@ label strong {
   font-size: 0.78rem;
 }
 
+.sidebar-nav,
 .nav-list {
   display: grid;
   gap: 0.35rem;
 }
 
+.sidebar-nav a,
 .nav-link {
   display: flex;
   align-items: center;
@@ -298,6 +312,8 @@ label strong {
   font-weight: 650;
 }
 
+.sidebar-nav a:hover,
+.sidebar-nav a.active,
 .nav-link:hover,
 .nav-link.active {
   background: linear-gradient(90deg, var(--volt-yellow-soft), var(--cyan-soft));
@@ -305,6 +321,7 @@ label strong {
   color: var(--text);
 }
 
+.sidebar-nav a:hover,
 .nav-link:hover {
   box-shadow: inset 3px 0 0 var(--cyan), var(--shadow-cyan);
 }
@@ -324,8 +341,15 @@ label strong {
   overflow-wrap: anywhere;
 }
 
+.main-content,
 .main-area {
   min-width: 0;
+  margin-left: var(--sidebar-width, 250px);
+  transition: margin-left 0.22s ease;
+}
+
+.main-content.sidebar-collapsed {
+  margin-left: 0;
 }
 
 .topbar {
@@ -341,6 +365,45 @@ label strong {
   border-bottom: 1px solid var(--line);
   background: rgba(11, 19, 43, 0.78);
   backdrop-filter: blur(16px);
+}
+
+.topbar-menu-btn {
+  display: inline-grid;
+  place-items: center;
+  gap: 0.22rem;
+  width: 2.65rem;
+  min-width: 2.65rem;
+  padding: 0;
+  border-color: var(--border-accent);
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text);
+}
+
+.topbar-menu-btn span {
+  display: block;
+  width: 1.15rem;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--volt-yellow);
+  box-shadow: 0 0 8px var(--volt-yellow-glow);
+}
+
+.topbar-title-block {
+  min-width: 0;
+  flex: 1;
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 11;
+  display: none;
+  background: rgba(2, 8, 22, 0.58);
+  backdrop-filter: blur(3px);
+}
+
+.sidebar-backdrop.show {
+  display: block;
 }
 
 :root[data-theme="light"] .topbar {
@@ -603,50 +666,47 @@ pre {
 }
 
 @media (max-width: 900px) {
-  .app-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    position: static;
-    height: auto;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .nav-list {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .nav-link {
-    justify-content: center;
-    min-height: 2.55rem;
-    padding: 0.55rem 0.4rem;
-    font-size: 0.86rem;
-  }
-
-  .sidebar-footer {
-    position: static;
-    margin-top: 1rem;
-  }
-
   .topbar {
-    position: static;
     align-items: flex-start;
-    flex-direction: column;
   }
 
   .topbar-actions {
-    width: 100%;
     justify-content: flex-start;
   }
 }
 
-@media (max-width: 560px) {
-  .nav-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(-100%);
+    box-shadow: none;
   }
 
+  .sidebar.open {
+    transform: translateX(0);
+    box-shadow: 18px 0 48px rgba(0, 0, 0, 0.38);
+  }
+
+  .sidebar.collapsed {
+    transform: translateX(-100%);
+  }
+
+  .main-content,
+  .main-area,
+  .main-content.sidebar-collapsed {
+    margin-left: 0;
+  }
+
+  .topbar {
+    position: sticky;
+    align-items: center;
+  }
+
+  .topbar-actions {
+    width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
   .actions,
   .topbar-actions {
     display: grid;

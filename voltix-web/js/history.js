@@ -11,13 +11,13 @@ import {
   formatEnergyWh,
   formatPower,
   formatSessionName,
-  initShell,
   isOverloadSession,
   isRecoveredSession,
   isValidFirebaseKey,
   normalizeSessionMap,
   numberValue,
   qs,
+  renderShell,
   safeText,
   sessionEnergyKwh,
   sessionEnergyWh,
@@ -36,15 +36,14 @@ const state = {
 
 async function init(){
   state.user = await requireAuth();
-  bindEls();
-  initShell({
-    active: 'history',
+  renderShell('history', 'History', {
     user: state.user,
     onLogout: async ()=>{
       await logout();
       window.location.href = 'login.html';
     }
   });
+  bindEls();
 
   els.refreshBtn.addEventListener('click', loadHistory);
   els.historySearch.addEventListener('input', renderFilteredHistory);
