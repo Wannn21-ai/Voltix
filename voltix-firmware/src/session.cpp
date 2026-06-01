@@ -112,6 +112,7 @@ static void fillCheckpointFromSession(ActiveSessionCheckpoint& checkpoint) {
   strlcpy(checkpoint.deviceName, sessionData.deviceName, sizeof(checkpoint.deviceName));
   checkpoint.active = shouldCheckpointState();
   checkpoint.sessionState = sessionData.state;
+  checkpoint.startMillis = sessionData.startedAtMs;
   checkpoint.elapsedSec = sessionData.durationMs / 1000UL;
   checkpoint.energyWh = sessionData.energyWh;
   checkpoint.energyKwh = sessionData.energyKwh;
@@ -134,7 +135,7 @@ static void restoreSessionFromCheckpoint(const ActiveSessionCheckpoint& checkpoi
   strlcpy(sessionData.deviceName, checkpoint.deviceName, sizeof(sessionData.deviceName));
   sessionData.state = state;
   sessionData.endReason = EndReason::NONE;
-  sessionData.startedAtMs = millis();
+  sessionData.startedAtMs = checkpoint.startMillis > 0 ? checkpoint.startMillis : millis();
   sessionData.endedAtMs = 0;
   sessionData.lastUpdateMs = millis();
   elapsedBeforeRecoveryMs = checkpoint.elapsedSec * 1000UL;

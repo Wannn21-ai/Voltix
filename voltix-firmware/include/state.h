@@ -54,6 +54,7 @@ struct ActiveSessionCheckpoint {
   char deviceName[32];
   bool active;
   SessionState sessionState;
+  unsigned long startMillis;
   unsigned long elapsedSec;
   float energyWh;
   float energyKwh;

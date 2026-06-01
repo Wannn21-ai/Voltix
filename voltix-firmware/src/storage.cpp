@@ -198,6 +198,7 @@ bool storageWriteActiveSessionCheckpoint(const ActiveSessionCheckpoint& checkpoi
   doc["deviceName"] = checkpoint.deviceName;
   doc["active"] = checkpoint.active;
   doc["sessionState"] = sessionStateToString(checkpoint.sessionState);
+  doc["startMillis"] = checkpoint.startMillis;
   doc["elapsedSec"] = checkpoint.elapsedSec;
   doc["energyWh"] = serialized(String(checkpoint.energyWh, 6));
   doc["energyKwh"] = serialized(String(checkpoint.energyKwh, 8));
@@ -255,6 +256,7 @@ bool storageReadActiveSessionCheckpoint(ActiveSessionCheckpoint& checkpoint) {
   strlcpy(checkpoint.deviceName, doc["deviceName"] | Config::DEFAULT_DEVICE_NAME, sizeof(checkpoint.deviceName));
   checkpoint.active = doc["active"] | false;
   checkpoint.sessionState = parseSessionState(doc["sessionState"] | "");
+  checkpoint.startMillis = doc["startMillis"] | 0UL;
   checkpoint.elapsedSec = doc["elapsedSec"] | 0UL;
   checkpoint.energyWh = doc["energyWh"] | 0.0f;
   checkpoint.energyKwh = doc["energyKwh"] | 0.0f;
