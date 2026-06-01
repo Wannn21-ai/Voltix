@@ -24,7 +24,20 @@
   padding: 0.9rem;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.035);
+  background:
+    linear-gradient(180deg, rgba(255, 234, 0, 0.045), rgba(72, 202, 228, 0.018)),
+    var(--panel-2);
+  box-shadow: 0 0 0 rgba(255, 234, 0, 0);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.status-card:hover,
+.metric-card:hover,
+.summary-card:hover,
+.history-item:hover {
+  border-color: var(--border-accent);
+  box-shadow: var(--shadow-volt);
+  transform: translateY(-1px);
 }
 
 .status-card span,
@@ -43,6 +56,7 @@
   font-size: clamp(1.25rem, 2vw, 1.8rem);
   line-height: 1.15;
   overflow-wrap: anywhere;
+  color: var(--volt-yellow);
 }
 
 .summary-card small,
@@ -64,10 +78,14 @@
   align-content: center;
   min-height: 14rem;
   text-align: center;
+  border-color: var(--border-accent);
+  box-shadow: var(--shadow-volt);
 }
 
 .gauge {
   --gauge-value: 0deg;
+  --gauge-color: var(--volt-yellow);
+  --gauge-glow: var(--volt-yellow-glow);
   display: grid;
   place-items: center;
   width: min(150px, 55vw);
@@ -75,12 +93,19 @@
   margin: 0.75rem auto;
   border-radius: 50%;
   background:
-    radial-gradient(circle, var(--panel) 0 58%, transparent 59%),
-    conic-gradient(var(--accent) var(--gauge-value), rgba(255, 255, 255, 0.08) 0);
+    radial-gradient(circle, var(--panel) 0 56%, transparent 57%),
+    conic-gradient(var(--gauge-color) var(--gauge-value), rgba(255, 255, 255, 0.09) 0);
+  box-shadow: 0 0 28px var(--gauge-glow);
+}
+
+.gauge.current-gauge {
+  --gauge-color: var(--cyan);
+  --gauge-glow: var(--cyan-glow);
 }
 
 .gauge strong {
-  font-size: 1.55rem;
+  font-size: 1.7rem;
+  color: var(--text-primary);
 }
 
 .chart-grid {
@@ -91,6 +116,9 @@
 
 .chart-panel {
   min-height: 19rem;
+  background:
+    linear-gradient(180deg, rgba(72, 202, 228, 0.045), rgba(255, 234, 0, 0.018)),
+    var(--panel);
 }
 
 .chart-wrap {
@@ -117,6 +145,32 @@
 .stop-button {
   background: var(--danger);
   color: #fff;
+}
+
+.power-card strong,
+.metric-card.is-electric strong,
+.summary-card.is-electric strong {
+  color: var(--volt-yellow);
+  text-shadow: 0 0 18px rgba(255, 234, 0, 0.18);
+}
+
+.power-card.power-warning {
+  border-color: rgba(255, 183, 3, 0.38);
+  box-shadow: 0 0 24px rgba(255, 183, 3, 0.13);
+}
+
+.power-card.power-warning strong {
+  color: var(--amber);
+}
+
+.power-card.power-danger {
+  border-color: rgba(255, 23, 68, 0.48);
+  box-shadow: 0 0 28px rgba(255, 23, 68, 0.2);
+  animation: dangerPulse 1.8s ease-in-out infinite;
+}
+
+.power-card.power-danger strong {
+  color: var(--red);
 }
 
 .command-status {
@@ -170,7 +224,9 @@
   padding: 0.95rem;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.035);
+  background:
+    linear-gradient(90deg, rgba(72, 202, 228, 0.045), transparent 38%),
+    var(--panel-2);
 }
 
 .history-title {
@@ -219,6 +275,11 @@
 .history-field b {
   text-align: right;
   font-weight: 650;
+  color: var(--cyan);
+}
+
+.history-field b.overload-text {
+  color: var(--red);
 }
 
 .settings-grid {
@@ -253,6 +314,10 @@
   border-bottom: 1px solid var(--line);
 }
 
+.toggle-row strong {
+  color: var(--volt-yellow);
+}
+
 .toggle-row input {
   width: auto;
   min-height: auto;
@@ -261,6 +326,23 @@
 .advanced-article {
   display: grid;
   gap: 1rem;
+}
+
+.advanced-hero {
+  display: grid;
+  gap: 0.75rem;
+  min-height: 13rem;
+  align-content: center;
+  border-color: var(--border-accent);
+  background:
+    radial-gradient(circle at 12% 20%, rgba(255, 234, 0, 0.15), transparent 18rem),
+    radial-gradient(circle at 88% 10%, rgba(72, 202, 228, 0.14), transparent 22rem),
+    var(--panel);
+  box-shadow: var(--shadow-volt);
+}
+
+.advanced-hero h3 {
+  font-size: clamp(1.7rem, 4vw, 3rem);
 }
 
 .advanced-article h3 {
@@ -274,11 +356,18 @@
 
 .formula {
   padding: 0.75rem 0.85rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border-accent);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text);
+  background: var(--volt-yellow-soft);
+  color: var(--volt-yellow);
   font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  box-shadow: inset 0 0 18px rgba(255, 234, 0, 0.045);
+}
+
+.formula.cyan {
+  border-color: rgba(72, 202, 228, 0.26);
+  background: var(--cyan-soft);
+  color: var(--cyan);
 }
 
 @media (max-width: 1120px) {

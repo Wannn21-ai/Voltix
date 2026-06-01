@@ -53,7 +53,7 @@
           <div class="status-grid">
             <div class="status-card"><span>Device name</span><strong id="deviceName">-</strong><small>Current session label</small></div>
             <div class="status-card"><span>System mode</span><strong id="systemMode">-</strong><small>Firmware reported mode</small></div>
-            <div class="status-card"><span>Session state</span><strong id="sessionState">-</strong><small>Idle, waiting load, monitoring</small></div>
+            <div class="status-card is-electric"><span>Session state</span><strong id="sessionState">-</strong><small>Idle, waiting load, monitoring</small></div>
             <div class="status-card"><span>Relay</span><strong id="relayState">-</strong><small>Output state</small></div>
             <div class="status-card"><span>Load detected</span><strong id="loadDetected">-</strong><small>PZEM threshold check</small></div>
             <div class="status-card"><span>Last live tick</span><strong id="lastSeen">-</strong><small>Timestamp or uptime movement</small></div>
@@ -72,11 +72,11 @@
           <div class="gauge-grid">
             <div class="gauge-card">
               <span class="badge">Voltage</span>
-              <div id="voltageGauge" class="gauge"><strong id="voltageGaugeValue">-</strong></div>
+              <div id="voltageGauge" class="gauge voltage-gauge"><strong id="voltageGaugeValue">-</strong></div>
             </div>
             <div class="gauge-card">
               <span class="badge">Current</span>
-              <div id="currentGauge" class="gauge"><strong id="currentGaugeValue">-</strong></div>
+              <div id="currentGauge" class="gauge current-gauge"><strong id="currentGaugeValue">-</strong></div>
             </div>
           </div>
         </section>
@@ -114,13 +114,13 @@
           <div class="metric-grid">
             <div class="metric-card"><span>Voltage</span><strong id="voltage">-</strong></div>
             <div class="metric-card"><span>Current</span><strong id="current">-</strong></div>
-            <div class="metric-card"><span>Power</span><strong id="power">-</strong></div>
+            <div id="powerCard" class="metric-card power-card"><span>Power</span><strong id="power">-</strong></div>
             <div class="metric-card"><span>Apparent power</span><strong id="apparentPower">-</strong></div>
             <div class="metric-card"><span>Frequency</span><strong id="frequency">-</strong></div>
             <div class="metric-card"><span>Power factor</span><strong id="pf">-</strong></div>
             <div class="metric-card"><span>PZEM total</span><strong id="pzemTotalKWh">-</strong></div>
-            <div class="metric-card"><span>Session energy</span><strong id="sessionEnergyKWh">-</strong><small id="sessionEnergyWh">-</small></div>
-            <div class="metric-card"><span>Session cost</span><strong id="sessionCost">-</strong></div>
+            <div class="metric-card is-electric"><span>Session energy</span><strong id="sessionEnergyKWh">-</strong><small id="sessionEnergyWh">-</small></div>
+            <div class="metric-card is-electric"><span>Session cost</span><strong id="sessionCost">-</strong></div>
             <div class="metric-card"><span>Duration</span><strong id="elapsedSec">-</strong></div>
             <div class="metric-card"><span>Peak power</span><strong id="peakPower">-</strong></div>
             <div class="metric-card"><span>Average power</span><strong id="averagePower">-</strong></div>
@@ -174,8 +174,8 @@
           </div>
           <div class="summary-grid">
             <div class="summary-card"><span>Total sessions</span><strong id="totalSessions">0 sessions</strong></div>
-            <div class="summary-card"><span>Total energy</span><strong id="totalEnergyKwh">0.000000 kWh</strong><small id="totalEnergyWh">0.000 Wh</small></div>
-            <div class="summary-card"><span>Total cost</span><strong id="totalCost">Rp 0</strong></div>
+            <div class="summary-card is-electric"><span>Total energy</span><strong id="totalEnergyKwh">0.000000 kWh</strong><small id="totalEnergyWh">0.000 Wh</small></div>
+            <div class="summary-card is-electric"><span>Total cost</span><strong id="totalCost">Rp 0</strong></div>
             <div class="summary-card"><span>Highest peak power</span><strong id="highestPeakPower">-</strong><small id="highestPeakPowerDevice">-</small></div>
             <div class="summary-card"><span>Most energy used</span><strong id="mostEnergyDevice">-</strong><small id="mostEnergyValue">-</small></div>
             <div class="summary-card"><span>Overload sessions</span><strong id="overloadCount">0 sessions</strong></div>

@@ -205,6 +205,8 @@ function createHistoryItem(session){
 
   if(isOverloadSession(session)){
     main.appendChild(createBadge('OVERLOAD', 'danger'));
+  }else if(String(session.endReason ?? '').trim().toUpperCase() === 'USER_STOP'){
+    main.appendChild(createBadge('USER STOP', 'neutral'));
   }
   if(isRecoveredSession(session)){
     main.appendChild(createBadge('RECOVERED', 'warning'));

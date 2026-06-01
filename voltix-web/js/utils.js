@@ -18,7 +18,7 @@ export function qs(id){
 export function loadUiSettings(){
   try{
     return {
-      theme: 'dark',
+      theme: 'electric',
       language: 'en',
       currency: 'IDR',
       notifications: {
@@ -30,7 +30,7 @@ export function loadUiSettings(){
     };
   }catch(error){
     console.warn('[ui] failed to parse local settings', error);
-    return { theme: 'dark', language: 'en', currency: 'IDR', notifications: {} };
+    return { theme: 'electric', language: 'en', currency: 'IDR', notifications: {} };
   }
 }
 
@@ -40,7 +40,7 @@ export function saveUiSettings(settings){
 }
 
 export function applyTheme(theme = loadUiSettings().theme){
-  const normalized = theme === 'light' ? 'light' : 'dark';
+  const normalized = ['electric', 'dark', 'light'].includes(theme) ? theme : 'electric';
   document.documentElement.dataset.theme = normalized;
 }
 

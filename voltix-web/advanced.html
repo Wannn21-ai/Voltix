@@ -38,26 +38,28 @@
       </header>
 
       <main class="page-content advanced-article">
-        <section class="panel">
+        <section class="panel advanced-hero">
           <h3>What Voltix Does</h3>
           <p>Voltix monitors an AC load through the ESP32, relay, PZEM readings, LittleFS storage, Firebase sync, and this authenticated web dashboard. The ESP32 remains device-scoped; user history ownership belongs to the signed-in web account.</p>
         </section>
 
         <section class="advanced-grid">
           <article class="panel">
-            <h3>Energy Formula</h3>
-            <p>Firmware accumulates session energy while monitoring. The dashboard formats the stored values without recalculating ownership or writing live data.</p>
-            <div class="formula">energyKwh = energyWh / 1000</div>
-            <div class="formula">cost = energyKwh * tariff</div>
+            <h3>Electrical Formulas</h3>
+            <p>Voltix displays firmware readings and keeps the math readable for quick checks.</p>
+            <div class="formula">S = V × I</div>
+            <div class="formula cyan">P = V × I × PF</div>
           </article>
           <article class="panel">
-            <h3>Power Factor</h3>
-            <p>Power factor shows how effectively current becomes real power. A lower value can mean the apparent power is much higher than useful power.</p>
+            <h3>Energy and Cost</h3>
+            <p>Firmware accumulates session energy while monitoring. The dashboard formats stored values without writing live data.</p>
+            <div class="formula">Energy(kWh) = Power(W) × time(hours) / 1000</div>
+            <div class="formula cyan">Cost = kWh × tariff</div>
+          </article>
+          <article class="panel">
+            <h3>Power Factor and Frequency</h3>
+            <p>Power factor shows how effectively current becomes real power. Frequency helps spot unstable supply conditions when paired with voltage and current changes.</p>
             <div class="formula">PF = realPowerW / apparentPowerVA</div>
-          </article>
-          <article class="panel">
-            <h3>Frequency</h3>
-            <p>Frequency is reported from PZEM readings. It helps spot unstable supply conditions when paired with voltage and current changes.</p>
           </article>
         </section>
 
@@ -65,7 +67,7 @@
           <article class="panel">
             <h3>Overload Protection</h3>
             <p>The overload threshold is stored in device config. The warning percent creates an early warning band before the hard threshold.</p>
-            <div class="formula">warningLimit = overloadThreshold * warningPercent / 100</div>
+            <div class="formula">warningLimit = overloadThreshold × warningPercent / 100</div>
           </article>
           <article class="panel">
             <h3>Offline Monitoring</h3>

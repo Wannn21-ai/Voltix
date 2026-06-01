@@ -167,7 +167,7 @@ function fillDeviceForm(config){
 }
 
 function fillUiForm(settings){
-  els.theme.value = settings.theme === 'light' ? 'light' : 'dark';
+  els.theme.value = ['electric', 'dark', 'light'].includes(settings.theme) ? settings.theme : 'electric';
   els.language.value = settings.language ?? 'en';
   els.notifyStale.checked = settings.notifications?.stale ?? true;
   els.notifyOverload.checked = settings.notifications?.overload ?? true;

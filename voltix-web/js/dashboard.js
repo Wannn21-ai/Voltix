@@ -70,7 +70,7 @@ function bindEls(){
     'lastSeen','uptime','ipAddress','voltage','current','power','apparentPower','frequency','pf',
     'pzemTotalKWh','sessionEnergyWh','sessionEnergyKWh','sessionCost','elapsedSec','peakPower',
     'averagePower','tariff','overloadThreshold','warningLimit','overloadInfo','voltageGauge',
-    'currentGauge','voltageGaugeValue','currentGaugeValue','cmdDeviceName','startBtn','stopBtn',
+    'currentGauge','voltageGaugeValue','currentGaugeValue','powerCard','cmdDeviceName','startBtn','stopBtn',
     'commandStatus','lastAck','dashboardInsightStatus','totalSessions','totalEnergyKwh',
     'totalEnergyWh','totalCost','highestPeakPower','highestPeakPowerDevice','mostEnergyDevice',
     'mostEnergyValue','overloadCount','peakWarning','overloadWarning'
@@ -209,6 +209,7 @@ function updateOverloadInfo(device){
   if(power === null || threshold === null || threshold <= 0){
     els.overloadInfo.textContent = 'Waiting for power and threshold data.';
     els.overloadInfo.className = 'notice';
+    updatePowerCardState('normal');
     return;
   }
 
@@ -216,13 +217,22 @@ function updateOverloadInfo(device){
   if(power >= threshold){
     els.overloadInfo.textContent = `Overload risk: ${formatPower(power)} is above ${formatPower(threshold)}.`;
     els.overloadInfo.className = 'notice danger';
+    updatePowerCardState('danger');
   }else if(power >= warningLimit){
     els.overloadInfo.textContent = `Warning: ${formatPower(power)} is near the overload threshold.`;
-    els.overloadInfo.className = 'notice';
+    els.overloadInfo.className = 'notice warning';
+    updatePowerCardState('warning');
   }else{
     els.overloadInfo.textContent = `Load is below warning limit (${formatPower(warningLimit)}).`;
     els.overloadInfo.className = 'notice success';
+    updatePowerCardState('normal');
   }
+}
+
+function updatePowerCardState(stateName){
+  if(!els.powerCard) return;
+  els.powerCard.classList.toggle('power-warning', stateName === 'warning');
+  els.powerCard.classList.toggle('power-danger', stateName === 'danger');
 }
 
 function updateGauges(device){
@@ -256,19 +266,19 @@ function setupCharts(){
 
   state.charts.power = new Chart(qs('powerChart'), {
     type: 'line',
-    data: { labels: [], datasets: [{ label: 'Power W', data: [], borderColor: '#18c1b6', backgroundColor: 'rgba(24,193,182,0.18)', tension: 0.25, fill: true }] },
+    data: { labels: [], datasets: [{ label: 'Power W', data: [], borderColor: '#FFEA00', backgroundColor: 'rgba(255,234,0,0.16)', tension: 0.25, fill: true }] },
     options: baseOptions
   });
 
   state.charts.usage = new Chart(qs('usagePieChart'), {
     type: 'doughnut',
-    data: { labels: [], datasets: [{ data: [], backgroundColor: ['#18c1b6', '#3fb7ff', '#f6b84b', '#53d58f', '#ef5b5b'] }] },
+    data: { labels: [], datasets: [{ data: [], backgroundColor: ['#FFEA00', '#48CAE4', '#FFB703', '#00E676', '#FF1744'] }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: getChartTextColor() } } } }
   });
 
   state.charts.comparison = new Chart(qs('comparisonBarChart'), {
     type: 'bar',
-    data: { labels: [], datasets: [{ label: 'Peak W', data: [], backgroundColor: '#3fb7ff' }] },
+    data: { labels: [], datasets: [{ label: 'Peak W', data: [], backgroundColor: '#48CAE4', borderColor: '#FFEA00', borderWidth: 1 }] },
     options: baseOptions
   });
 }
