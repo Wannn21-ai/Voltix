@@ -22,7 +22,9 @@ constexpr const char* SETUP_AP_PASSWORD = "12345678";
 constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = 15000UL;
 constexpr unsigned long WIFI_RECONNECT_INTERVAL_MS = 10000UL;
 constexpr unsigned long RESTART_DELAY_MS = 1200UL;
-constexpr unsigned long BOOT_BUTTON_HOLD_MS = 5000UL;
+constexpr unsigned long BOOT_NEXT_ATTEMPT_MS = 1000UL;
+constexpr unsigned long BOOT_CLEAR_WIFI_MS = 5000UL;
+constexpr unsigned long BOOT_ENTER_OFFLINE_MS = 10000UL;
 constexpr byte DNS_PORT = 53;
 
 enum class WifiSource {
@@ -35,11 +37,12 @@ static unsigned long lastReconnectAttemptMs = 0;
 static unsigned long connectStartedAtMs = 0;
 static unsigned long restartAtMs = 0;
 static unsigned long bootButtonPressedAtMs = 0;
+static unsigned long portalOfflineAtMs = 0;
 static bool portalActive = false;
 static bool wasConnecting = false;
 static bool wasConnected = false;
 static bool restartPending = false;
-static bool bootButtonClearTriggered = false;
+static bool portalOfflinePending = false;
 static bool bootComplete = false;
 static bool bootButtonArmed = false;
 static bool initialNetworkSetup = true;
@@ -104,7 +107,7 @@ void sendSetupForm() {
   page += F("main{max-width:420px;margin:32px auto;padding:20px;background:#fff;border:1px solid #ddd;border-radius:8px}");
   page += F("label{display:block;margin-top:14px;font-weight:600}input{box-sizing:border-box;width:100%;padding:10px;margin-top:6px;border:1px solid #bbb;border-radius:6px;font-size:16px}");
   page += F("button{width:100%;margin-top:18px;padding:12px;border:0;border-radius:6px;background:#111;color:#fff;font-size:16px}");
-  page += F("a{display:block;margin-top:16px;color:#333;text-align:center}</style></head><body><main>");
+  page += F(".secondary{background:#444}a{display:block;margin-top:16px;color:#333;text-align:center}</style></head><body><main>");
   page += F("<h1>Voltix Setup</h1><form method='post' action='/save'>");
   page += F("<label>WiFi SSID<input name='ssid' required value='");
   page += htmlEscape(savedWifiSsid);
@@ -115,6 +118,7 @@ void sendSetupForm() {
   page += F("'></label><label>Overload Threshold (W)<input name='overloadThreshold' type='number' step='0.1' value='");
   page += String(appConfig.overloadThresholdW > 0.0f ? appConfig.overloadThresholdW : Config::OVERLOAD_THRESHOLD_W, 1);
   page += F("'></label><button type='submit'>Save and Restart</button></form>");
+  page += F("<form method='post' action='/offline'><button class='secondary' type='submit'>Lanjutkan Mode Offline</button></form>");
   page += F("<a href='/status'>Status</a><a href='/reset-wifi'>Reset WiFi</a></main></body></html>");
   portalServer.send(200, "text/html", page);
 }
@@ -172,6 +176,16 @@ void handleResetWiFi() {
   scheduleRestart();
 }
 
+void handleOffline() {
+  portalServer.send(
+    200,
+    "text/html",
+    "<!doctype html><html><body><h1>Voltix masuk Mode Offline</h1><p>Relay ON untuk deteksi beban pertama.</p></body></html>"
+  );
+  portalOfflinePending = true;
+  portalOfflineAtMs = millis() + 100UL;
+}
+
 void redirectToSetup() {
   portalServer.sendHeader("Location", String("http://") + setupIp.toString() + "/", true);
   portalServer.send(302, "text/plain", "");
@@ -196,6 +210,8 @@ void startSetupPortal(const char* reason) {
   portalServer.on("/status", HTTP_GET, sendStatus);
   portalServer.on("/save", HTTP_POST, handleSave);
   portalServer.on("/reset-wifi", HTTP_GET, handleResetWiFi);
+  portalServer.on("/offline", HTTP_GET, handleOffline);
+  portalServer.on("/offline", HTTP_POST, handleOffline);
   portalServer.on("/generate_204", HTTP_GET, redirectToSetup);
   portalServer.on("/fwlink", HTTP_GET, redirectToSetup);
   portalServer.onNotFound(redirectToSetup);
@@ -245,8 +261,21 @@ void updateBootButton() {
 
   const bool pressed = digitalRead(Config::BUTTON_PIN) == LOW;
   if (!pressed) {
+    if (bootButtonPressedAtMs > 0 && bootButtonArmed) {
+      const unsigned long heldMs = millis() - bootButtonPressedAtMs;
+      if (heldMs >= BOOT_ENTER_OFFLINE_MS) {
+        offlineModeEnter(OfflineEntryReason::BOOT_10S);
+      } else if (heldMs >= BOOT_CLEAR_WIFI_MS) {
+        Serial.println("[network] BOOT 5s release detected, clearing WiFi");
+        clearWiFiCredentials();
+        scheduleRestart();
+      } else if (heldMs >= BOOT_NEXT_ATTEMPT_MS) {
+        if (offlineModeCanStartNextAttempt()) {
+          offlineModeStartNextAttempt(false);
+        }
+      }
+    }
     bootButtonPressedAtMs = 0;
-    bootButtonClearTriggered = false;
     bootButtonArmed = true;
     return;
   }
@@ -258,13 +287,6 @@ void updateBootButton() {
   if (bootButtonPressedAtMs == 0) {
     bootButtonPressedAtMs = millis();
     return;
-  }
-
-  if (!bootButtonClearTriggered && millis() - bootButtonPressedAtMs >= BOOT_BUTTON_HOLD_MS) {
-    bootButtonClearTriggered = true;
-    Serial.println("[network] BOOT long press detected, clearing WiFi");
-    clearWiFiCredentials();
-    scheduleRestart();
   }
 }
 }
@@ -299,6 +321,11 @@ void networkUpdate() {
   if (portalActive) {
     dnsServer.processNextRequest();
     portalServer.handleClient();
+    if (portalOfflinePending && millis() >= portalOfflineAtMs) {
+      portalOfflinePending = false;
+      offlineModeEnter(OfflineEntryReason::CAPTIVE_PORTAL);
+      return;
+    }
     systemMode = SystemMode::SETUP;
     return;
   }
@@ -394,6 +421,21 @@ bool networkIsConnected() {
 
 bool networkIsPortalActive() {
   return portalActive;
+}
+
+void networkStopPortalForOffline() {
+  if (portalActive) {
+    portalServer.stop();
+    dnsServer.stop();
+    portalActive = false;
+    Serial.println("[portal] Captive portal stopped for offline mode");
+  }
+
+  WiFi.disconnect(false, false);
+  wasConnecting = false;
+  initialNetworkSetup = false;
+  lastReconnectAttemptMs = millis();
+  systemMode = SystemMode::OFFLINE;
 }
 
 void networkMarkBootComplete() {

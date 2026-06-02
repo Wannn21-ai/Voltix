@@ -24,6 +24,7 @@ static unsigned long lastFirebaseConfigMs = 0;
 static unsigned long lastFirebaseLiveMs = 0;
 static unsigned long lastFirebaseCommandMs = 0;
 static unsigned long lastPendingHistorySyncMs = 0;
+static unsigned long offlineNoNetworkSinceMs = 0;
 static char serialCommandBuffer[32];
 static size_t serialCommandLength = 0;
 static bool serialCommandOverflow = false;
@@ -407,6 +408,22 @@ void loop() {
   }
   wasWifiConnected = wifiConnected;
 
+  if (!wifiConnected &&
+      !sessionIsActive() &&
+      !recoveryActive &&
+      !offlineModeIsActive()) {
+    if (offlineNoNetworkSinceMs == 0) {
+      offlineNoNetworkSinceMs = now;
+    }
+    const unsigned long timeoutSec = appConfig.offlineTimeoutSec > 0 ? appConfig.offlineTimeoutSec : 300UL;
+    if (now - offlineNoNetworkSinceMs >= timeoutSec * 1000UL) {
+      offlineNoNetworkSinceMs = 0;
+      offlineModeEnter(OfflineEntryReason::AUTO_NO_INTERNET);
+    }
+  } else {
+    offlineNoNetworkSinceMs = 0;
+  }
+
   storageUpdate();
   indicatorsUpdate();
   displayUpdate();
@@ -426,6 +443,8 @@ void loop() {
     lastSessionUpdateMs = now;
     sessionUpdate();
   }
+
+  offlineModeUpdate();
 
   if (wifiConnected) {
     if (lastFirebaseConfigMs == 0 || now - lastFirebaseConfigMs >= 30000UL) {

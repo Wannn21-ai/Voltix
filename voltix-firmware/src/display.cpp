@@ -78,6 +78,15 @@ void renderIdle() {
 }
 
 void renderWaitingLoad() {
+  if (offlineModeIsActive()) {
+    startScreen();
+    drawLine(0, "Offline Mode");
+    drawLine(1, "Relay: ON");
+    drawLine(2, "Waiting Load");
+    finishScreen();
+    return;
+  }
+
   char deviceName[24];
   trimText(sessionData.deviceName, deviceName, sizeof(deviceName));
 
@@ -85,6 +94,22 @@ void renderWaitingLoad() {
   drawLine(0, deviceName);
   drawLine(2, "Waiting Load");
   drawLine(4, "Connect device");
+  finishScreen();
+}
+
+void renderOfflineNoLoad() {
+  startScreen();
+  drawLine(0, "No Load");
+  drawLine(1, "Relay OFF");
+  drawLine(2, "BOOT 1s Next");
+  finishScreen();
+}
+
+void renderOfflineReady() {
+  startScreen();
+  drawLine(0, "Offline Mode");
+  drawLine(1, "Relay OFF");
+  drawLine(2, "BOOT 1s Next");
   finishScreen();
 }
 
@@ -178,6 +203,18 @@ void renderScreen() {
 
   if (sessionData.state == SessionState::WAITING_LOAD) {
     renderWaitingLoad();
+    return;
+  }
+
+  if (offlineModeShowNoLoadPrompt()) {
+    renderOfflineNoLoad();
+    return;
+  }
+
+  if (offlineModeIsActive() &&
+      !offlineModeShowFinishedSummary() &&
+      !sessionIsActive()) {
+    renderOfflineReady();
     return;
   }
 

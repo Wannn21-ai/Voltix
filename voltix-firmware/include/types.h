@@ -27,6 +27,13 @@ enum class EndReason {
   POWER_LOSS_RECOVERY
 };
 
+enum class OfflineEntryReason {
+  AUTO_NO_INTERNET,
+  BOOT_10S,
+  CAPTIVE_PORTAL
+};
+
 const char* systemModeToString(SystemMode mode);
 const char* sessionStateToString(SessionState state);
 const char* endReasonToString(EndReason reason);
+const char* offlineEntryReasonToString(OfflineEntryReason reason);
