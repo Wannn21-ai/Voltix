@@ -15,21 +15,10 @@
       <header class="topbar" id="topbar"></header>
 
       <main class="page-content settings-grid">
-        <section class="page-header full-width">
-          <div class="page-header-row">
-            <div>
-              <h1>Settings</h1>
-              <p>Pricing, device thresholds, appearance, notifications, and account tools.</p>
-            </div>
-            <span class="status-pill">Voltix config</span>
-          </div>
-        </section>
-
-        <section class="panel">
+        <section class="settings-main-section flat-section">
           <div class="section-head">
             <div>
               <h3>Device Configuration</h3>
-              <p>Saved to /devices/esp32-voltix-001/config for the ESP32 to read.</p>
             </div>
           </div>
 
@@ -110,11 +99,6 @@
 
         <aside class="settings-side">
           <section class="settings-card">
-            <h3>Account</h3>
-            <p class="topbar-meta">Stored under /users/{uid}/settings and /users/{uid}/history.</p>
-          </section>
-
-          <section class="settings-card">
             <h3>Notifications</h3>
             <div class="toggle-row">
               <div>
@@ -145,12 +129,6 @@
               <button id="exportUserHistoryBtn" class="button-secondary" type="button">Export My History</button>
               <button id="deleteUserHistoryBtn" class="button-danger" type="button">Delete All History</button>
             </div>
-            <p class="topbar-meta">Delete All clears device completedSessions and your account history.</p>
-          </section>
-
-          <section class="settings-card">
-            <h3>About</h3>
-            <p class="topbar-meta">Voltix keeps device telemetry device-scoped and imports completed sessions into the signed-in user account.</p>
           </section>
         </aside>
       </main>

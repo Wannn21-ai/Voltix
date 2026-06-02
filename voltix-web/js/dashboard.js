@@ -30,12 +30,14 @@ import {
 } from './insights.js';
 
 const els = {};
+const LIVE_STALE_MS = 20000;
 const state = {
   user: null,
   config: {},
   live: null,
   insightSessions: [],
-  lastFreshValue: null,
+  lastLiveTimestamp: null,
+  hasLiveTimestampChanged: false,
   lastFreshChangeAt: 0,
   pendingCommand: null,
   powerSamples: [],
@@ -61,8 +63,8 @@ async function init(){
   listenConfig();
   listenCompletedSessions();
   listenLastAck();
-  updateConnectionStatus();
-  setInterval(updateConnectionStatus, 2000);
+  refreshDashboardFreshness();
+  setInterval(refreshDashboardFreshness, 2000);
 }
 
 function cleanDashboardShell(){
@@ -188,15 +190,18 @@ function listenLastAck(){
 }
 
 function updateLiveUI(live){
+  const fresh = isLiveFresh(live);
   const sys = live.system || {};
-  const device = live.device || {};
-  const session = live.session || {};
+  const rawDevice = live.device || {};
+  const rawSession = live.session || {};
+  const device = fresh ? rawDevice : staleDeviceView();
+  const session = fresh ? rawSession : staleSessionView();
   const currency = state.config.currency ?? session.currency ?? 'IDR';
 
-  setText('deviceName', session.deviceName ?? device.deviceName ?? live.deviceName);
+  setText('deviceName', fresh ? (session.deviceName ?? device.deviceName ?? live.deviceName) : '-');
   setText('systemMode', sys.systemMode);
-  setText('sessionState', sys.sessionState);
-  setText('relayState', formatOnOff(sys.relay));
+  setText('sessionState', fresh ? sys.sessionState : 'OFFLINE');
+  setText('relayState', fresh ? formatOnOff(sys.relay) : 'OFF');
   setText('loadDetected', formatYesNo(device.loadDetected));
   setText('lastSeen', formatFreshnessText());
   setText('uptime', formatDuration(sys.uptime ?? sys.uptimeSec));
@@ -223,6 +228,37 @@ function updateLiveUI(live){
   updateCommandButtons();
 }
 
+function staleDeviceView(){
+  return {
+    voltage: null,
+    current: null,
+    power: 0,
+    apparent: 0,
+    apparentPower: 0,
+    powerFactor: null,
+    pf: null,
+    frequency: null,
+    loadDetected: false,
+    energy: null,
+    pzemTotalKwh: null
+  };
+}
+
+function staleSessionView(){
+  return {
+    active: false,
+    deviceName: '-',
+    energyWh: null,
+    energy: null,
+    energyKwh: null,
+    cost: null,
+    elapsedSec: null,
+    durationSec: null,
+    peakPower: null,
+    averagePower: null
+  };
+}
+
 function updateConfigUI(){
   const currency = state.config.currency ?? 'IDR';
   const threshold = numberValue(state.config.overloadThreshold);
@@ -235,6 +271,13 @@ function updateConfigUI(){
 }
 
 function updateOverloadInfo(device){
+  if(!isLiveFresh(state.live)){
+    els.overloadInfo.textContent = 'Offline: live readings are stale. Waiting for ESP32 telemetry.';
+    els.overloadInfo.className = 'notice';
+    updatePowerCardState('normal');
+    return;
+  }
+
   const power = numberValue(device.power);
   const threshold = numberValue(state.config.overloadThreshold);
   const warningPercent = numberValue(state.config.overloadWarningPercent) ?? 90;
@@ -318,6 +361,7 @@ function setupCharts(){
 }
 
 function updatePowerChart(live){
+  if(!isLiveFresh(live)) return;
   const power = numberValue(live?.device?.power);
   if(power === null || !state.charts.power) return;
 
@@ -361,13 +405,16 @@ function renderInsights(){
 }
 
 function trackFreshness(sys){
-  const timestamp = sys.timestamp ?? null;
-  const uptime = sys.uptime ?? sys.uptimeSec ?? null;
-  const freshValue = `${timestamp ?? ''}:${uptime ?? ''}`;
+  const timestamp = numberValue(sys.timestamp);
 
-  if(timestamp === null && uptime === null) return;
-  if(state.lastFreshValue === null || state.lastFreshValue !== freshValue){
-    state.lastFreshValue = freshValue;
+  if(timestamp === null) return;
+  if(state.lastLiveTimestamp === null){
+    state.lastLiveTimestamp = timestamp;
+    return;
+  }
+  if(state.lastLiveTimestamp !== timestamp){
+    state.lastLiveTimestamp = timestamp;
+    state.hasLiveTimestampChanged = true;
     state.lastFreshChangeAt = Date.now();
   }
 }
@@ -377,7 +424,7 @@ function updateConnectionStatus(){
   els.connectionStatus.textContent = online ? 'Online' : 'Offline';
   els.connectionStatus.className = `status-pill ${online ? 'online' : 'offline'}`;
   if(els.webStatusText){
-    els.webStatusText.textContent = state.lastFreshValue === null
+    els.webStatusText.textContent = state.lastLiveTimestamp === null
       ? 'Web: menunggu ESP32'
       : online ? 'Web: online' : 'Web: offline';
   }
@@ -385,16 +432,33 @@ function updateConnectionStatus(){
   setText('lastSeen', formatFreshnessText());
 }
 
+function refreshDashboardFreshness(){
+  if(state.live){
+    updateLiveUI(state.live);
+    return;
+  }
+  updateConnectionStatus();
+}
+
+function isLiveFresh(live = state.live){
+  if(!live) return false;
+  const timestamp = numberValue(live?.system?.timestamp);
+  if(timestamp === null || state.lastLiveTimestamp === null || !state.hasLiveTimestampChanged) {
+    return false;
+  }
+  return timestamp === state.lastLiveTimestamp && Date.now() - state.lastFreshChangeAt <= LIVE_STALE_MS;
+}
+
 function isEspOnline(){
-  const staleMs = Date.now() - (state.lastFreshChangeAt || 0);
-  return state.lastFreshValue !== null && staleMs <= 15000;
+  return isLiveFresh(state.live);
 }
 
 function updatePowerStatusBadge(powerState = null){
   if(!els.powerStatusBadge) return;
-  const sessionState = String(state.live?.system?.sessionState ?? '').toUpperCase();
-  const relayOn = state.live?.system?.relay === true;
-  const active = state.live?.session?.active === true;
+  const fresh = isLiveFresh(state.live);
+  const sessionState = fresh ? String(state.live?.system?.sessionState ?? '').toUpperCase() : 'OFFLINE';
+  const relayOn = fresh && state.live?.system?.relay === true;
+  const active = fresh && state.live?.session?.active === true;
   const effectivePowerState = powerState || (
     els.powerCard?.classList.contains('power-danger') ? 'danger' :
     els.powerCard?.classList.contains('power-warning') ? 'warning' :
@@ -419,9 +483,10 @@ function updatePowerStatusBadge(powerState = null){
 }
 
 function formatFreshnessText(){
-  if(!state.lastFreshChangeAt) return '-';
+  if(!state.lastLiveTimestamp) return '-';
+  if(!state.hasLiveTimestampChanged || !state.lastFreshChangeAt) return 'stale';
   const age = Math.max(0, Math.trunc((Date.now() - state.lastFreshChangeAt) / 1000));
-  return age === 0 ? 'just now' : `${age}s ago`;
+  return age <= LIVE_STALE_MS / 1000 ? (age === 0 ? 'just now' : `${age}s ago`) : 'stale';
 }
 
 function beginCommandSend(type){
@@ -472,8 +537,9 @@ function clearPendingCommand(){
 }
 
 function updateCommandButtons(){
-  const sys = state.live?.system || {};
-  const session = state.live?.session || {};
+  const fresh = isLiveFresh(state.live);
+  const sys = fresh ? (state.live?.system || {}) : {};
+  const session = fresh ? (state.live?.session || {}) : {};
   const waiting = !!state.pendingCommand;
   const relayOn = sys.relay === true;
   const sessionState = String(sys.sessionState ?? '').toUpperCase();
