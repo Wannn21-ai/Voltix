@@ -16,13 +16,13 @@
       <header class="topbar" id="topbar"></header>
 
       <main class="page-content dashboard-page">
-        <section id="liveControlBar" class="page-header live-control-bar full-width" hidden>
+        <section id="liveControlBar" class="page-header live-control-bar flat-section full-width" hidden>
           <div class="live-control-actions">
             <button id="topStopBtn" class="button-danger top-stop-btn" type="button" disabled hidden>Stop</button>
           </div>
         </section>
 
-        <section class="dashboard-section main-gauge-section">
+        <section class="dashboard-section flat-section main-gauge-section">
           <div class="gauge-grid">
             <article class="gauge-card">
               <div class="gauge-card-head">
@@ -62,7 +62,7 @@
           <div id="overloadInfo" class="notice">Waiting for power and threshold data.</div>
         </section>
 
-        <section class="dashboard-section">
+        <section class="dashboard-section flat-section">
           <div class="stat-grid dashboard-stat-grid">
             <article class="stat-card is-electric"><span>Energy</span><strong id="sessionEnergyKWh">-</strong><small>Duration: <b id="elapsedSec">-</b></small></article>
             <article class="stat-card is-electric"><span>Estimated Cost</span><strong id="sessionCost">-</strong><small>Tariff: <b id="tariff">-</b>/kWh</small></article>
@@ -71,27 +71,27 @@
           </div>
         </section>
 
-        <section class="dashboard-section">
+        <section class="insight-section flat-section">
           <div class="section-head">
             <div>
               <h3>Energy Insights</h3>
               <p id="dashboardInsightStatus">Loading...</p>
             </div>
           </div>
-          <div class="summary-grid">
-            <div class="summary-card is-electric"><span>Total energy</span><strong id="totalEnergyKwh">0.000000 kWh</strong><small id="totalEnergyWh">0.000 Wh</small></div>
-            <div class="summary-card is-electric"><span>Total cost</span><strong id="totalCost">Rp 0</strong></div>
-            <div class="summary-card"><span>Highest peak power</span><strong id="highestPeakPower">-</strong><small id="highestPeakPowerDevice">-</small></div>
-            <div class="summary-card"><span>Most energy used</span><strong id="mostEnergyDevice">-</strong><small id="mostEnergyValue">-</small></div>
-            <div class="summary-card"><span>Overload sessions</span><strong id="overloadCount">0 sessions</strong></div>
+          <div class="summary-grid insight-grid">
+            <div class="summary-card insight-card is-electric"><span>Total energy</span><strong id="totalEnergyKwh">0.000000 kWh</strong><small id="totalEnergyWh">0.000 Wh</small></div>
+            <div class="summary-card insight-card is-electric"><span>Total cost</span><strong id="totalCost">Rp 0</strong></div>
+            <div class="summary-card insight-card"><span>Overload sessions</span><strong id="overloadCount">0 sessions</strong></div>
+            <div class="summary-card insight-card"><span>Most energy used</span><strong id="mostEnergyDevice">-</strong><small id="mostEnergyValue">-</small></div>
+            <div class="summary-card insight-card"><span>Highest peak power</span><strong id="highestPeakPower">-</strong><small id="highestPeakPowerDevice">-</small></div>
           </div>
           <div class="insight-warnings">
-            <p id="peakWarning" class="warning-message" hidden></p>
-            <p id="overloadWarning" class="warning-message danger" hidden></p>
+            <p id="peakWarning" class="warning-message insight-alert" hidden></p>
+            <p id="overloadWarning" class="warning-message insight-alert danger" hidden></p>
           </div>
         </section>
 
-        <section class="dashboard-section advanced-readings">
+        <section class="dashboard-section flat-section advanced-readings">
           <div class="section-head">
             <div>
               <h3>Advanced Readings</h3>
@@ -105,7 +105,7 @@
           </div>
         </section>
 
-        <section class="dashboard-section">
+        <section class="dashboard-section flat-section">
           <div class="section-head">
             <div>
               <h3>Charts</h3>
