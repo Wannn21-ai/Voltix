@@ -35,7 +35,7 @@ void sensorUpdate() {
   sensorData.powerFactor = safeRead(powerFactor);
   sensorData.valid = coreValid;
   sensorData.loadDetected = coreValid &&
-    (sensorData.current >= appConfig.loadCurrentThresholdA ||
+    (sensorData.current >= appConfig.loadCurrentThresholdA &&
      sensorData.power >= appConfig.loadPowerThresholdW);
   sensorData.lastReadMs = millis();
 

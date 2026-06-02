@@ -441,10 +441,10 @@ function waitForAck(cmd){
     type: cmd.type,
     timeoutId: window.setTimeout(()=>{
       if(state.pendingCommand?.id === cmd.id){
-        setCommandStatus(`${cmd.type} timeout: no matching ACK after 15 seconds`);
+        setCommandStatus(`${cmd.type} timeout: no matching ACK after 20 seconds`, 'warning');
         clearPendingCommand();
       }
-    }, 15000)
+    }, 20000)
   };
   setCommandStatus(`Waiting for ${cmd.type} ACK (${cmd.id})...`);
   updateCommandButtons();
@@ -454,7 +454,12 @@ function waitForAck(cmd){
 function handleCommandAck(ack){
   if(!state.pendingCommand?.id || ack.id !== state.pendingCommand.id) return;
   const message = ack.message ? `: ${ack.message}` : '';
-  setCommandStatus(`${ack.type ?? state.pendingCommand.type} ${ack.status ?? 'DONE'}${message}`);
+  const status = String(ack.status ?? 'DONE').toUpperCase();
+  const tone = status === 'REJECTED' ? 'warning' : status === 'ERROR' ? 'error' : 'success';
+  setCommandStatus(`${ack.type ?? state.pendingCommand.type} ${status}${message}`, tone);
+  if(status === 'REJECTED'){
+    showToast(ack.message || 'Command rejected');
+  }
   clearPendingCommand();
 }
 
@@ -490,8 +495,9 @@ function updateCommandButtons(){
   }
 }
 
-function setCommandStatus(message){
+function setCommandStatus(message, tone = ''){
   els.commandStatus.textContent = message;
+  els.commandStatus.className = tone ? `command-status ${tone}` : 'command-status';
 }
 
 function formatAck(ack){
@@ -499,6 +505,7 @@ function formatAck(ack){
     ['ID', ack.id],
     ['Type', ack.type],
     ['Status', ack.status],
+    ['Reason', ack.reason],
     ['Message', ack.message],
     ['Processed At', ack.processedAt]
   ];

@@ -148,6 +148,9 @@ pre {
   color: var(--text-secondary);
   font-family: var(--font-display);
 }
+.command-status.success { color: var(--green); }
+.command-status.warning { color: var(--amber); }
+.command-status.error { color: var(--red); }
 
 /* ===== CONNECTION STATUS ===== */
 #connectionStatus {

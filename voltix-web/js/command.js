@@ -14,6 +14,8 @@ export async function sendStart(deviceName, config = {}){
     deviceName: deviceName || 'Unnamed Load',
     tariff: config.tariff ?? 1444.7,
     overloadThreshold: config.overloadThreshold ?? 2000,
+    loadPowerThreshold: config.loadPowerThreshold ?? 1,
+    loadCurrentThreshold: config.loadCurrentThreshold ?? 0.02,
     createdAt: now
   };
 

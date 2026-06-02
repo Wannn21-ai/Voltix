@@ -3,12 +3,19 @@
 #include <Arduino.h>
 #include "types.h"
 
+enum class StartValidationResult {
+  NONE,
+  VERIFIED,
+  REJECTED_NO_LOAD
+};
+
 void sessionBegin();
-void sessionStart(const char* deviceName);
+bool sessionStart(const char* deviceName);
 void sessionSetRemoteContext(const char* uid, const char* sessionId);
 void sessionStop(EndReason reason);
 void sessionUpdate();
 bool sessionIsActive();
+bool sessionConsumeStartValidationResult(StartValidationResult& result);
 void sessionRecoveryBegin();
 void sessionRecoveryUpdate();
 bool sessionRecoveryIsActive();

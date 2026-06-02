@@ -18,7 +18,10 @@ static char lastProcessedCommandId[48] = "";
 static char ackId[48] = "";
 static char ackType[12] = "";
 static char ackStatus[12] = "DONE";
+static char ackReason[24] = "";
 static char ackMessage[64] = "Command processed";
+static bool pendingStartAck = false;
+static char pendingStartCommandId[48] = "";
 static unsigned long lastLiveLogMs = 0;
 static unsigned long lastPollLogMs = 0;
 
@@ -127,11 +130,41 @@ static bool isSessionActiveForLive() {
          sessionData.state == SessionState::OVERLOAD;
 }
 
-static void setAck(const char* id, const char* type, const char* status, const char* message) {
+static void setAck(const char* id, const char* type, const char* status, const char* message, const char* reason = "") {
   strlcpy(ackId, id == nullptr ? "" : id, sizeof(ackId));
   strlcpy(ackType, type == nullptr ? "" : type, sizeof(ackType));
   strlcpy(ackStatus, status == nullptr ? "DONE" : status, sizeof(ackStatus));
+  strlcpy(ackReason, reason == nullptr ? "" : reason, sizeof(ackReason));
   strlcpy(ackMessage, message == nullptr ? "Command processed" : message, sizeof(ackMessage));
+}
+
+static bool publishPendingStartAckIfReady() {
+  if (!pendingStartAck) {
+    return false;
+  }
+
+  StartValidationResult result = StartValidationResult::NONE;
+  if (!sessionConsumeStartValidationResult(result)) {
+    return false;
+  }
+
+  if (result == StartValidationResult::VERIFIED) {
+    setAck(pendingStartCommandId, "START", "DONE", "Load verified. Monitoring started.");
+  } else if (result == StartValidationResult::REJECTED_NO_LOAD) {
+    setAck(
+      pendingStartCommandId,
+      "START",
+      "REJECTED",
+      "No load detected. Connect a device before starting monitoring.",
+      "NO_LOAD"
+    );
+  }
+
+  firebaseAckCommand();
+  httpRequest("PUT", "/devices/esp32-voltix-001/commands/current.json", "null", nullptr, true);
+  pendingStartAck = false;
+  pendingStartCommandId[0] = '\0';
+  return true;
 }
 
 void firebaseBegin() {
@@ -212,6 +245,10 @@ void firebaseReadConfig() {
 }
 
 void firebasePollCommand() {
+  if (publishPendingStartAckIfReady()) {
+    return;
+  }
+
   String response;
   const bool forceLog = shouldLog(lastPollLogMs);
   if (!httpRequest("GET", "/devices/esp32-voltix-001/commands/current.json", "", &response, forceLog)) {
@@ -240,6 +277,9 @@ void firebasePollCommand() {
   }
 
   if (strcmp(id, lastProcessedCommandId) == 0) {
+    if (pendingStartAck && strcmp(id, pendingStartCommandId) == 0) {
+      return;
+    }
     setAck(id, type, "DONE", "Duplicate command ignored");
     firebaseAckCommand();
     httpRequest("PUT", "/devices/esp32-voltix-001/commands/current.json", "null", nullptr, true);
@@ -252,17 +292,25 @@ void firebasePollCommand() {
     const char* deviceName = doc["deviceName"] | Config::DEFAULT_DEVICE_NAME;
     if (doc["tariff"].is<float>()) appConfig.tariffPerKwh = doc["tariff"].as<float>();
     if (doc["overloadThreshold"].is<float>()) appConfig.overloadThresholdW = doc["overloadThreshold"].as<float>();
+    if (doc["loadPowerThreshold"].is<float>()) appConfig.loadPowerThresholdW = doc["loadPowerThreshold"].as<float>();
+    if (doc["loadCurrentThreshold"].is<float>()) appConfig.loadCurrentThresholdA = doc["loadCurrentThreshold"].as<float>();
     saveLocalConfig();
-    sessionStart(deviceName);
+    if (!sessionStart(deviceName)) {
+      setAck(id, type, "ERROR", "Device is busy");
+      firebaseAckCommand();
+      httpRequest("PUT", "/devices/esp32-voltix-001/commands/current.json", "null", nullptr, true);
+      return;
+    }
     sessionSetRemoteContext(uid, commandSessionId);
-    setAck(id, type, "DONE", "START command processed");
-    firebaseAckCommand();
-    httpRequest("PUT", "/devices/esp32-voltix-001/commands/current.json", "null", nullptr, true);
+    pendingStartAck = true;
+    strlcpy(pendingStartCommandId, id, sizeof(pendingStartCommandId));
     return;
   }
 
   if (strcmp(type, "STOP") == 0) {
     sessionSetRemoteContext(uid, commandSessionId);
+    pendingStartAck = false;
+    pendingStartCommandId[0] = '\0';
     if (sessionIsActive()) {
       sessionStop(EndReason::USER_STOP);
     }
@@ -277,10 +325,13 @@ void firebasePollCommand() {
 }
 
 void firebaseAckCommand() {
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<384> doc;
   doc["id"] = ackId;
   doc["type"] = ackType;
   doc["status"] = ackStatus;
+  if (ackReason[0] != '\0') {
+    doc["reason"] = ackReason;
+  }
   doc["message"] = ackMessage;
   doc["processedAt"] = millis();
 

@@ -1,4 +1,5 @@
 #include "session.h"
+#include "config.h"
 #include "firebase_sync.h"
 #include "network.h"
 #include "relay.h"
@@ -27,6 +28,10 @@ unsigned long recoveryStartedAtMs = 0;
 unsigned long lastCheckpointWriteMs = 0;
 unsigned long elapsedBeforeRecoveryMs = 0;
 unsigned long resumeMillis = 0;
+unsigned long loadValidationStartedAtMs = 0;
+unsigned int loadValidationStableSamples = 0;
+bool loadValidationWaitingLogged = false;
+StartValidationResult startValidationResult = StartValidationResult::NONE;
 char recoveryStatusText[48] = "idle";
 }
 
@@ -100,8 +105,7 @@ static CompletedSessionSnapshot makeFinalSnapshot(EndReason reason) {
 }
 
 static bool shouldCheckpointState() {
-  return sessionData.state == SessionState::WAITING_LOAD ||
-         sessionData.state == SessionState::MONITORING ||
+  return sessionData.state == SessionState::MONITORING ||
          sessionData.state == SessionState::OVERLOAD;
 }
 
@@ -203,27 +207,119 @@ static void finalizeRecoveredNoLoad() {
   Serial.println("[recovery] no load found, session finalized");
 }
 
-void sessionBegin() {
-  sessionData.state = SessionState::IDLE;
-  sessionData.endReason = EndReason::NONE;
-  Serial.println("[session] Ready");
+static bool isLoadAboveStartThreshold() {
+  return sensorData.valid &&
+         sensorData.current >= appConfig.loadCurrentThresholdA &&
+         sensorData.power >= appConfig.loadPowerThresholdW;
 }
 
-void sessionStart(const char* deviceName) {
-  if (sessionIsActive()) {
+static void resetLoadValidationState() {
+  loadValidationStartedAtMs = 0;
+  loadValidationStableSamples = 0;
+  loadValidationWaitingLogged = false;
+}
+
+static void verifyLoadAndStartMonitoring() {
+  const unsigned long now = millis();
+  sessionData.state = SessionState::MONITORING;
+  sessionData.endReason = EndReason::NONE;
+  sessionData.startedAtMs = now;
+  sessionData.endedAtMs = 0;
+  sessionData.lastUpdateMs = now;
+  sessionData.durationMs = 0;
+  sessionData.startEnergyKwh = sensorData.energy;
+  sessionData.energyWh = 0.0f;
+  sessionData.energyKwh = 0.0f;
+  sessionData.cost = 0.0f;
+  sessionData.averagePowerW = 0.0f;
+  sessionData.peakPowerW = sensorData.power > 0.0f ? sensorData.power : 0.0f;
+  sessionData.pendingSync = false;
+  resetLoadValidationState();
+  startValidationResult = StartValidationResult::VERIFIED;
+  Serial.println("[LoadCheck] Load verified");
+  sessionWriteCheckpoint();
+}
+
+static void cancelLoadValidationNoHistory() {
+  relaySet(false);
+  sessionData.endReason = EndReason::NO_LOAD_DETECTED;
+  sessionData.state = SessionState::IDLE;
+  sessionData.startedAtMs = 0;
+  sessionData.endedAtMs = 0;
+  sessionData.lastUpdateMs = 0;
+  sessionData.durationMs = 0;
+  sessionData.startEnergyKwh = sensorData.energy;
+  sessionData.energyWh = 0.0f;
+  sessionData.energyKwh = 0.0f;
+  sessionData.cost = 0.0f;
+  sessionData.averagePowerW = 0.0f;
+  sessionData.peakPowerW = 0.0f;
+  sessionData.pendingSync = false;
+  storageClearActiveSessionCheckpoint();
+  resetLoadValidationState();
+  startValidationResult = StartValidationResult::REJECTED_NO_LOAD;
+  Serial.println("[LoadCheck] Cancelled: no load detected");
+}
+
+static void handleLoadValidation() {
+  if (sessionData.state != SessionState::WAITING_LOAD) {
     return;
   }
 
+  const unsigned long now = millis();
+  if (loadValidationStartedAtMs == 0) {
+    loadValidationStartedAtMs = now;
+  }
+
+  if (!loadValidationWaitingLogged) {
+    Serial.println("[LoadCheck] Waiting load");
+    loadValidationWaitingLogged = true;
+  }
+
+  if (now - loadValidationStartedAtMs >= Config::LOAD_DETECT_TIMEOUT_MS) {
+    cancelLoadValidationNoHistory();
+    return;
+  }
+
+  if (now - loadValidationStartedAtMs < Config::LOAD_SETTLE_MS) {
+    return;
+  }
+
+  if (isLoadAboveStartThreshold()) {
+    loadValidationStableSamples++;
+  } else {
+    loadValidationStableSamples = 0;
+  }
+
+  if (loadValidationStableSamples >= Config::LOAD_DETECT_STABLE_SAMPLES) {
+    verifyLoadAndStartMonitoring();
+  }
+}
+
+void sessionBegin() {
+  sessionData.state = SessionState::IDLE;
+  sessionData.endReason = EndReason::NONE;
+  resetLoadValidationState();
+  startValidationResult = StartValidationResult::NONE;
+  Serial.println("[session] Ready");
+}
+
+bool sessionStart(const char* deviceName) {
+  if (sessionIsActive()) {
+    return false;
+  }
+
   const char* name = deviceName == nullptr ? appConfig.deviceName : deviceName;
+  const unsigned long now = millis();
   strlcpy(sessionData.deviceName, name, sizeof(sessionData.deviceName));
   sessionData.state = SessionState::WAITING_LOAD;
   sessionData.endReason = EndReason::NONE;
-  sessionData.startedAtMs = millis();
-  makeSessionId(sessionData.sessionId, sizeof(sessionData.sessionId), sessionData.startedAtMs);
+  sessionData.startedAtMs = 0;
+  makeSessionId(sessionData.sessionId, sizeof(sessionData.sessionId), now);
   sessionData.uid[0] = '\0';
   sessionData.startMode = systemMode;
   sessionData.endedAtMs = 0;
-  sessionData.lastUpdateMs = sessionData.startedAtMs;
+  sessionData.lastUpdateMs = 0;
   sessionData.durationMs = 0;
   sessionData.startEnergyKwh = sensorData.energy;
   sessionData.energyWh = 0.0f;
@@ -234,11 +330,16 @@ void sessionStart(const char* deviceName) {
   sessionData.pendingSync = false;
   elapsedBeforeRecoveryMs = 0;
   resumeMillis = 0;
+  loadValidationStartedAtMs = now;
+  loadValidationStableSamples = 0;
+  loadValidationWaitingLogged = false;
+  startValidationResult = StartValidationResult::NONE;
 
   relaySet(true);
-  Serial.print("[session] Started for device ");
+  Serial.println("[LoadCheck] Started");
+  Serial.print("[session] Validating load for device ");
   Serial.println(sessionData.deviceName);
-  sessionWriteCheckpoint();
+  return true;
 }
 
 void sessionSetRemoteContext(const char* uid, const char* sessionId) {
@@ -248,11 +349,18 @@ void sessionSetRemoteContext(const char* uid, const char* sessionId) {
   if (sessionId != nullptr && sessionId[0] != '\0') {
     strlcpy(sessionData.sessionId, sessionId, sizeof(sessionData.sessionId));
   }
-  sessionWriteCheckpoint();
+  if (shouldCheckpointState()) {
+    sessionWriteCheckpoint();
+  }
 }
 
 void sessionStop(EndReason reason) {
   if (!sessionIsActive()) {
+    return;
+  }
+
+  if (sessionData.state == SessionState::WAITING_LOAD) {
+    cancelLoadValidationNoHistory();
     return;
   }
 
@@ -334,6 +442,11 @@ void sessionStop(EndReason reason) {
 }
 
 void sessionUpdate() {
+  if (sessionData.state == SessionState::WAITING_LOAD) {
+    handleLoadValidation();
+    return;
+  }
+
   if (!sessionIsActive()) {
     return;
   }
@@ -353,11 +466,6 @@ void sessionUpdate() {
     return;
   }
 
-  if (sessionData.state == SessionState::WAITING_LOAD && sensorData.loadDetected) {
-    sessionData.state = SessionState::MONITORING;
-    Serial.println("[session] Load detected, monitoring");
-  }
-
   if (sessionData.state == SessionState::MONITORING && !sensorData.loadDetected) {
     sessionStop(EndReason::LOAD_REMOVED);
     return;
@@ -370,6 +478,16 @@ bool sessionIsActive() {
          sessionData.state == SessionState::MONITORING ||
          sessionData.state == SessionState::OVERLOAD ||
          sessionData.state == SessionState::FINISHING;
+}
+
+bool sessionConsumeStartValidationResult(StartValidationResult& result) {
+  if (startValidationResult == StartValidationResult::NONE) {
+    return false;
+  }
+
+  result = startValidationResult;
+  startValidationResult = StartValidationResult::NONE;
+  return true;
 }
 
 void sessionRecoveryBegin() {
