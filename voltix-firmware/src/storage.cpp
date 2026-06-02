@@ -77,6 +77,43 @@ static bool writeHistory(DynamicJsonDocument& doc) {
   return written > 0;
 }
 
+static bool parseOfflineDeviceNumber(const char* name, unsigned long& number) {
+  if (name == nullptr) {
+    return false;
+  }
+  if (strncmp(name, "Device ", 7) != 0) {
+    return false;
+  }
+
+  const char* digits = name + 7;
+  if (*digits == '\0') {
+    return false;
+  }
+
+  unsigned long parsed = 0;
+  while (*digits != '\0') {
+    if (*digits < '0' || *digits > '9') {
+      return false;
+    }
+    parsed = parsed * 10UL + static_cast<unsigned long>(*digits - '0');
+    digits++;
+  }
+
+  number = parsed;
+  return parsed > 0;
+}
+
+static bool isPendingHistoryEntry(JsonObjectConst entry) {
+  const char* syncStatus = entry["syncStatus"] | "";
+  if (strcmp(syncStatus, "SYNCED") == 0) {
+    return false;
+  }
+  if (strcmp(syncStatus, "PENDING") == 0) {
+    return true;
+  }
+  return entry["pendingSync"] | false;
+}
+
 static SessionState parseSessionState(const char* value) {
   if (value == nullptr) return SessionState::IDLE;
   if (strcmp(value, "WAITING_LOAD") == 0) return SessionState::WAITING_LOAD;
@@ -355,6 +392,29 @@ int storageCountHistory() {
   return doc.as<JsonArray>().size();
 }
 
+unsigned long storageNextOfflineDeviceCounterFromHistory() {
+  if (!mounted) {
+    Serial.println("[storage] Cannot scan offline device names, LittleFS is not mounted");
+    return 1UL;
+  }
+
+  DynamicJsonDocument doc(HISTORY_DOC_CAPACITY);
+  if (!loadHistory(doc)) {
+    return 1UL;
+  }
+
+  unsigned long maxDeviceNumber = 0;
+  for (JsonObjectConst entry : doc.as<JsonArrayConst>()) {
+    unsigned long number = 0;
+    const char* name = entry["name"] | entry["deviceName"] | "";
+    if (parseOfflineDeviceNumber(name, number) && number > maxDeviceNumber) {
+      maxDeviceNumber = number;
+    }
+  }
+
+  return maxDeviceNumber + 1UL;
+}
+
 bool storageClearHistory() {
   if (!mounted) {
     Serial.println("[storage] Cannot clear history, LittleFS is not mounted");
@@ -428,8 +488,7 @@ int storageCountPendingHistory() {
 
   int count = 0;
   for (JsonObjectConst entry : doc.as<JsonArrayConst>()) {
-    const char* syncStatus = entry["syncStatus"] | "PENDING";
-    if (strcmp(syncStatus, "PENDING") == 0) {
+    if (isPendingHistoryEntry(entry)) {
       count++;
     }
   }
@@ -453,8 +512,7 @@ bool storageSyncPendingHistoryToFirebase() {
   int failed = 0;
 
   for (JsonObject entry : history) {
-    const char* syncStatus = entry["syncStatus"] | "PENDING";
-    if (strcmp(syncStatus, "PENDING") == 0) {
+    if (isPendingHistoryEntry(entry)) {
       pending++;
     }
   }
@@ -467,8 +525,7 @@ bool storageSyncPendingHistoryToFirebase() {
   }
 
   for (JsonObject entry : history) {
-    const char* syncStatus = entry["syncStatus"] | "PENDING";
-    if (strcmp(syncStatus, "PENDING") != 0) {
+    if (!isPendingHistoryEntry(entry)) {
       continue;
     }
 

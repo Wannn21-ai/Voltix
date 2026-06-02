@@ -17,6 +17,7 @@ constexpr unsigned long RECOVERY_SETTLE_MS = 1200UL;
 constexpr unsigned long OFFLINE_FINISHED_SUMMARY_MS = 4000UL;
 constexpr const char* PREF_NAMESPACE = "voltix";
 constexpr const char* PREF_OFFLINE_DEVICE_COUNTER = "offline_device_counter";
+constexpr const char* PREF_OFFLINE_DEVICE_COUNTER_NVS = "off_dev_count";
 constexpr const char* OFFLINE_SESSION_TAG = "Sesi Offline";
 
 enum class RecoveryState {
@@ -42,6 +43,7 @@ bool offlineModeActive = false;
 bool offlineNoLoadPrompt = false;
 bool offlineReadyLogged = false;
 unsigned long offlineFinishedAtMs = 0;
+unsigned long offlineDeviceCounter = 1UL;
 }
 
 static void updateSessionTotals() {
@@ -86,7 +88,10 @@ static unsigned long loadOfflineDeviceCounter() {
     return 1UL;
   }
 
-  const unsigned long counter = prefs.getULong(PREF_OFFLINE_DEVICE_COUNTER, 1UL);
+  unsigned long counter = prefs.getULong(PREF_OFFLINE_DEVICE_COUNTER_NVS, 0UL);
+  if (counter == 0) {
+    counter = prefs.getULong(PREF_OFFLINE_DEVICE_COUNTER, 1UL);
+  }
   prefs.end();
   return counter == 0 ? 1UL : counter;
 }
@@ -98,8 +103,12 @@ static bool saveOfflineDeviceCounter(unsigned long nextCounter) {
     return false;
   }
 
-  prefs.putULong(PREF_OFFLINE_DEVICE_COUNTER, nextCounter);
+  const size_t written = prefs.putULong(PREF_OFFLINE_DEVICE_COUNTER_NVS, nextCounter);
   prefs.end();
+  if (written == 0) {
+    Serial.println("[offline] Failed to save offline device counter");
+    return false;
+  }
   Serial.print("[offline] Offline device counter saved next=");
   Serial.println(nextCounter);
   return true;
@@ -110,11 +119,13 @@ static void assignOfflineDeviceNameIfNeeded() {
     return;
   }
 
-  const unsigned long counter = loadOfflineDeviceCounter();
-  snprintf(sessionData.deviceName, sizeof(sessionData.deviceName), "Device %lu", counter);
+  snprintf(sessionData.deviceName, sizeof(sessionData.deviceName), "Device %lu", offlineDeviceCounter);
   Serial.print("[offline] Assigned offline device name=");
   Serial.println(sessionData.deviceName);
-  saveOfflineDeviceCounter(counter + 1UL);
+  offlineDeviceCounter++;
+  if (!saveOfflineDeviceCounter(offlineDeviceCounter)) {
+    offlineDeviceCounter = loadOfflineDeviceCounter();
+  }
 }
 
 static CompletedSessionSnapshot makeFinalSnapshot(EndReason reason) {
@@ -365,6 +376,14 @@ static void handleLoadValidation() {
 void sessionBegin() {
   sessionData.state = SessionState::IDLE;
   sessionData.endReason = EndReason::NONE;
+  offlineDeviceCounter = loadOfflineDeviceCounter();
+  const unsigned long historyCounter = storageNextOfflineDeviceCounterFromHistory();
+  if (historyCounter > offlineDeviceCounter) {
+    offlineDeviceCounter = historyCounter;
+    saveOfflineDeviceCounter(offlineDeviceCounter);
+  }
+  Serial.print("[offline] Loaded offline device counter=");
+  Serial.println(offlineDeviceCounter);
   resetLoadValidationState();
   startValidationResult = StartValidationResult::NONE;
   Serial.println("[session] Ready");

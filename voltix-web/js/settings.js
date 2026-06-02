@@ -5,6 +5,7 @@ import {
   applyTheme,
   csvEscape,
   downloadText,
+  isOfflineSession,
   loadUiSettings,
   normalizeSessionMap,
   qs,
@@ -53,7 +54,7 @@ async function init(){
 
   els.settingsForm.addEventListener('submit', handleSave);
   els.exportUserHistoryBtn.addEventListener('click', exportUserHistory);
-  els.deleteUserHistoryBtn.addEventListener('click', deleteUserHistory);
+  els.deleteUserHistoryBtn.addEventListener('click', deleteAllHistory);
   els.theme.addEventListener('change', ()=>applyTheme(els.theme.value));
 
   await loadSettings();
@@ -228,7 +229,7 @@ async function exportUserHistory(){
   try{
     const snap = await get(ref(db, `/users/${currentUser.uid}/history`));
     const sessions = normalizeSessionMap(snap.val());
-    const rows = [['sessionId','deviceName','energy','energyWh','cost','endReason','timestamp']];
+    const rows = [['sessionId','deviceName','energy','energyWh','cost','endReason','timestamp','sessionTag','offlineSession','startMode','endMode','syncStatus']];
     sessions.forEach(session=>{
       rows.push([
         session.sessionId,
@@ -237,7 +238,12 @@ async function exportUserHistory(){
         session.energyWh,
         session.cost,
         session.endReason,
-        session.timestamp ?? session.endUnixMs ?? session.startUnixMs
+        session.timestamp ?? session.endUnixMs ?? session.startUnixMs,
+        session.sessionTag ?? (isOfflineSession(session) ? 'Sesi Offline' : ''),
+        isOfflineSession(session),
+        session.startMode,
+        session.endMode,
+        session.syncStatus
       ]);
     });
     downloadText(`voltix-user-history-${Date.now()}.csv`, rows.map(row=>row.map(csvEscape).join(',')).join('\n'), 'text/csv;charset=utf-8');
@@ -246,15 +252,18 @@ async function exportUserHistory(){
   }
 }
 
-async function deleteUserHistory(){
-  const answer = window.prompt('Type DELETE to clear only /users/{your uid}/history. Device queue stays intact.');
+async function deleteAllHistory(){
+  const answer = window.prompt(`Type DELETE to clear /devices/${DEVICE_ID}/completedSessions and /users/{your uid}/history.`);
   if(answer !== 'DELETE') return;
 
   setBusy(true, 'Deleting...', 'Deleting...');
   try{
-    await remove(ref(db, `/users/${currentUser.uid}/history`));
-    setMessage('Your user history was cleared. Device completed sessions were not deleted.', 'success');
-    showToast('User history cleared');
+    await Promise.all([
+      remove(ref(db, `/devices/${DEVICE_ID}/completedSessions`)),
+      remove(ref(db, `/users/${currentUser.uid}/history`))
+    ]);
+    setMessage('All history was cleared from device completedSessions and your account history.', 'success');
+    showToast('All history cleared');
   }catch(error){
     setMessage(`Delete failed: ${error.message}`, 'error');
   }finally{

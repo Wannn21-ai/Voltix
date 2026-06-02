@@ -61,7 +61,6 @@ async function init(){
     });
   });
   els.exportCsvBtn.addEventListener('click', exportCsv);
-  els.deleteAllHistoryBtn.addEventListener('click', deleteAllUserHistory);
 
   await loadHistory();
 }
@@ -74,7 +73,7 @@ function syncFilterTabs(filter){
 
 function bindEls(){
   [
-    'refreshBtn','exportCsvBtn','deleteAllHistoryBtn','historySearch','historyFilter','historySort','historyHeaderStatus',
+    'refreshBtn','exportCsvBtn','historySearch','historyFilter','historySort','historyHeaderStatus',
     'totalSessions','totalEnergyKwh','totalEnergyWh','totalCost','highestPeakPower',
     'highestPeakPowerDevice','mostEnergyDevice','mostEnergyValue','overloadCount',
     'peakWarning','overloadWarning','historyStatus','historyError','emptyState','historyList'
@@ -240,7 +239,19 @@ function createHistoryItem(session){
 
   const meta = document.createElement('span');
   meta.textContent = formatDateTime(sessionTimestamp(session), session.date, session.time);
-  title.append(main, meta);
+
+  const actions = document.createElement('div');
+  actions.className = 'history-actions';
+  actions.appendChild(meta);
+
+  const deleteButton = document.createElement('button');
+  deleteButton.className = 'button-danger history-delete-button';
+  deleteButton.type = 'button';
+  deleteButton.textContent = 'Delete';
+  deleteButton.addEventListener('click', ()=>deleteHistorySession(session));
+  actions.appendChild(deleteButton);
+
+  title.append(main, actions);
   item.appendChild(title);
 
   const fields = [
@@ -315,17 +326,28 @@ function exportCsv(){
   downloadText(`voltix-history-${Date.now()}.csv`, csv, 'text/csv;charset=utf-8');
 }
 
-async function deleteAllUserHistory(){
-  const answer = window.prompt('Type DELETE to clear only your user history. Device completedSessions will remain untouched.');
-  if(answer !== 'DELETE') return;
+async function deleteHistorySession(session){
+  const sessionId = session?.sessionId ?? session?.id;
+  if(!isValidFirebaseKey(sessionId)){
+    showError('Delete failed: invalid session id.');
+    return;
+  }
+
+  if(!window.confirm('Hapus sesi ini dari history?')) return;
 
   setLoading(true);
   try{
-    await remove(ref(db, `/users/${state.user.uid}/history`));
-    state.sessions = [];
-    renderSummary([]);
+    console.log(`[history] deleting sessionId=${sessionId}`);
+    await remove(ref(db, `/devices/${DEVICE_ID}/completedSessions/${sessionId}`));
+    console.log('[history] deleted from device completedSessions');
+    await remove(ref(db, `/users/${state.user.uid}/history/${sessionId}`));
+    console.log('[history] deleted from user history');
+    console.log('[history] delete complete');
+
+    state.sessions = state.sessions.filter(item=>(item.sessionId ?? item.id) !== sessionId);
+    renderSummary(state.sessions);
     renderFilteredHistory();
-    showToast('User history cleared');
+    showToast('History session deleted');
   }catch(error){
     console.error('[history] delete failed', error);
     showError(`Delete failed: ${error.message}`);

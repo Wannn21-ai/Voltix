@@ -270,6 +270,18 @@ pre {
 }
 .history-title span { font-size: 11px; color: var(--text-muted); text-align: right; }
 
+.history-actions {
+  display: flex; align-items: center;
+  justify-content: flex-end; gap: 8px;
+  flex-wrap: wrap;
+}
+
+.history-delete-button {
+  min-height: 32px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
 .overload-badge {
   display: inline-flex; align-items: center;
   border-radius: 20px; padding: 2px 8px;
