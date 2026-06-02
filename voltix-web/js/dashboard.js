@@ -300,19 +300,19 @@ function setupCharts(){
 
   state.charts.power = new Chart(qs('powerChart'), {
     type: 'line',
-    data: { labels: [], datasets: [{ label: 'Power W', data: [], borderColor: '#FFEA00', backgroundColor: 'rgba(255,234,0,0.16)', tension: 0.25, fill: true }] },
+    data: { labels: [], datasets: [{ label: 'Power W', data: [], borderColor: '#00e5ff', backgroundColor: 'rgba(0,229,255,0.16)', tension: 0.25, fill: true }] },
     options: baseOptions
   });
 
   state.charts.usage = new Chart(qs('usagePieChart'), {
     type: 'doughnut',
-    data: { labels: [], datasets: [{ data: [], backgroundColor: ['#FFEA00', '#48CAE4', '#FFB703', '#00E676', '#FF1744'] }] },
+    data: { labels: [], datasets: [{ data: [], backgroundColor: ['#00e5ff', '#00e676', '#ffab00', '#ff1744', '#888888'] }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: getChartTextColor() } } } }
   });
 
   state.charts.comparison = new Chart(qs('comparisonBarChart'), {
     type: 'bar',
-    data: { labels: [], datasets: [{ label: 'Peak W', data: [], backgroundColor: '#48CAE4', borderColor: '#FFEA00', borderWidth: 1 }] },
+    data: { labels: [], datasets: [{ label: 'Peak W', data: [], backgroundColor: '#00e5ff', borderColor: '#00e676', borderWidth: 1 }] },
     options: baseOptions
   });
 }
