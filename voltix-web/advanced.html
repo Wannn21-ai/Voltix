@@ -6,6 +6,7 @@
   <title>Voltix Advanced</title>
   <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/dashboard.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
 </head>
 <body>
   <div class="app-layout">
@@ -14,66 +15,151 @@
     <div class="main-content" id="main-content">
       <header class="topbar" id="topbar"></header>
 
-      <main class="page-content advanced-article">
-        <section class="panel advanced-hero">
-          <h3>What Voltix Does</h3>
-          <p>Voltix monitors an AC load through the ESP32, relay, PZEM readings, LittleFS storage, Firebase sync, and this authenticated web dashboard. The ESP32 remains device-scoped; user history ownership belongs to the signed-in web account.</p>
+      <main class="page-content advanced-article advanced-live-page">
+        <section class="page-header">
+          <div class="page-header-row advanced-page-header">
+            <div>
+              <h1>Advanced Readings</h1>
+              <p>Technical data for engineers &amp; enthusiasts</p>
+            </div>
+            <span id="advancedLiveBadge" class="status-pill online">LIVE</span>
+          </div>
         </section>
 
-        <section class="advanced-grid">
-          <article class="panel">
-            <h3>Electrical Formulas</h3>
-            <p>Voltix displays firmware readings and keeps the math readable for quick checks.</p>
-            <div class="formula">S = V &times; I</div>
-            <div class="formula cyan">P = V &times; I &times; PF</div>
+        <section class="panel advanced-reference-card">
+          <div class="advanced-reference-icon" aria-hidden="true">&#9888;</div>
+          <div>
+            <h3>Technical Reference</h3>
+            <p>Data on this page is intended for technical analysis. Power Factor and Frequency readings require an active device to be meaningful. The dashboard shows simplified data suitable for everyday use.</p>
+          </div>
+        </section>
+
+        <section class="advanced-metric-grid" aria-label="Live technical metrics">
+          <article class="advanced-metric-card">
+            <div class="advanced-card-head">
+              <span class="advanced-metric-icon" aria-hidden="true">&#9889;</span>
+              <span id="pfStatus" class="advanced-status-dot">No Device</span>
+            </div>
+            <span>Power Factor</span>
+            <strong id="pfValue">&mdash;</strong>
+            <div class="pf-scale">
+              <span>0 (Poor)</span>
+              <span>0.5</span>
+              <span>1.0 (Ideal)</span>
+            </div>
+            <p>Ratio of active power (W) to apparent power (VA). Closer to 1.0 = more efficient. Most home appliances: 0.7-0.95.</p>
           </article>
-          <article class="panel">
-            <h3>Energy and Cost</h3>
-            <p>Firmware accumulates session energy while monitoring. The dashboard formats stored values without writing live data.</p>
-            <div class="formula">Energy(kWh) = Power(W) &times; time(hours) / 1000</div>
-            <div class="formula cyan">Cost = kWh &times; tariff</div>
+
+          <article class="advanced-metric-card">
+            <div class="advanced-card-head">
+              <span class="advanced-metric-icon" aria-hidden="true">&#12316;</span>
+              <small>Standard: 50 Hz (Indonesia PLN)</small>
+            </div>
+            <span>Grid Frequency</span>
+            <strong id="frequencyValue">&mdash; Hz</strong>
+            <p>AC grid frequency from PLN. Normal range: 49.5-50.5 Hz. Deviation may indicate grid instability or heavy load conditions.</p>
           </article>
-          <article class="panel">
-            <h3>Power Factor and Frequency</h3>
-            <p>Power factor shows how effectively current becomes real power. Frequency helps spot unstable supply conditions when paired with voltage and current changes.</p>
-            <div class="formula">PF = realPowerW / apparentPowerVA</div>
+
+          <article class="advanced-metric-card">
+            <div class="advanced-card-head">
+              <span class="advanced-metric-icon" aria-hidden="true">&#9670;</span>
+              <small>Formula: V &times; I</small>
+            </div>
+            <span>Apparent Power</span>
+            <strong id="apparentPowerValue">&mdash; VA</strong>
+            <p>Total power drawn from the grid (V &times; I). Includes both active (useful) and reactive (wasted) power. Always &ge; active power (W).</p>
+          </article>
+
+          <article class="advanced-metric-card">
+            <div class="advanced-card-head">
+              <span class="advanced-metric-icon" aria-hidden="true">&#8767;</span>
+              <small>Formula: &radic;(VA&sup2; - W&sup2;)</small>
+            </div>
+            <span>Reactive Power</span>
+            <strong id="reactivePowerValue">&mdash; VAR</strong>
+            <p>Calculated: &radic;(VA&sup2; - W&sup2;). Power that oscillates between source and load without doing useful work. Caused by inductive/capacitive loads.</p>
           </article>
         </section>
 
-        <section class="advanced-grid">
-          <article class="panel">
-            <h3>Overload Protection</h3>
-            <p>The overload threshold is stored in device config. The warning percent creates an early warning band before the hard threshold.</p>
-            <div class="formula">warningLimit = overloadThreshold &times; warningPercent / 100</div>
+        <section class="advanced-section">
+          <div class="section-head">
+            <div>
+              <h3>Live Calculation Reference</h3>
+              <p>Read-only calculations from Voltix live telemetry and device config.</p>
+            </div>
+          </div>
+
+          <div class="advanced-reference-grid">
+            <article class="panel advanced-formula-card">
+              <h3>Power</h3>
+              <div class="advanced-ref-row"><span>Active Power (W)</span><small>PZEM.power()</small><b id="activePowerRef">&mdash;</b></div>
+              <div class="advanced-ref-row"><span>Apparent Power (VA)</span><small>V &times; I</small><b id="apparentPowerRef">&mdash;</b></div>
+              <div class="advanced-ref-row"><span>Reactive Power (VAR)</span><small>&radic;(VA&sup2;-W&sup2;)</small><b id="reactivePowerRef">&mdash;</b></div>
+              <div class="advanced-ref-row"><span>Power Factor</span><small>W &divide; VA</small><b id="powerFactorRef">&mdash;</b></div>
+            </article>
+
+            <article class="panel advanced-formula-card">
+              <h3>Energy &amp; Cost</h3>
+              <div class="advanced-ref-row"><span>Session Energy (Wh)</span><small>P &times; T(h)</small><b id="sessionEnergyWhRef">&mdash;</b></div>
+              <div class="advanced-ref-row"><span>Session Energy (kWh)</span><small>Wh &divide; 1000</small><b id="sessionEnergyKwhRef">&mdash;</b></div>
+              <div class="advanced-ref-row"><span>Estimated Cost</span><small>kWh &times; tariff</small><b id="sessionCostRef">&mdash;</b></div>
+              <div class="advanced-ref-row"><span>Tariff used</span><small>settings</small><b id="tariffRef">&mdash;</b></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="advanced-chart-grid">
+          <article class="panel chart-panel chart-card">
+            <h3>Power Factor over time</h3>
+            <div class="chart-wrap"><canvas id="pfChart"></canvas></div>
           </article>
-          <article class="panel">
-            <h3>Offline Monitoring</h3>
-            <p>If WiFi drops, firmware keeps monitoring locally. Completed sessions are saved to LittleFS first, then queued to Firebase when connectivity returns.</p>
+          <article class="panel chart-panel chart-card">
+            <h3>Frequency over time</h3>
+            <div class="chart-wrap"><canvas id="frequencyChart"></canvas></div>
           </article>
-          <article class="panel">
-            <h3>Pending Sync</h3>
-            <p>Completed sessions are uploaded to the device queue at /devices/esp32-voltix-001/completedSessions. The web app imports them into /users/{uid}/history for the current Firebase Auth user.</p>
+          <article class="panel chart-panel chart-card full-width">
+            <h3>Active/Apparent/Reactive Power over time</h3>
+            <div class="chart-wrap"><canvas id="powerAdvancedChart"></canvas></div>
           </article>
         </section>
 
-        <section class="panel">
-          <h3>Power-Loss Recovery</h3>
-          <p>Firmware checkpoints active sessions in LittleFS. After restart, the ESP32 can resume when load is still present or finalize a recovered session if the load was removed. This dashboard displays recovered session badges from history metadata when available.</p>
-        </section>
+        <section class="panel advanced-log-panel">
+          <div class="section-head advanced-log-head">
+            <div>
+              <h3>Live Log</h3>
+              <p>Latest technical samples from the live device path.</p>
+            </div>
+            <div class="advanced-log-actions">
+              <button id="clearLogBtn" class="button-secondary" type="button">&#10005; Clear Log</button>
+              <button id="exportLogBtn" type="button">&darr; Export CSV</button>
+            </div>
+          </div>
 
-        <section class="panel">
-          <h3>Firebase Contract</h3>
-          <ul>
-            <li>Dashboard reads /devices/esp32-voltix-001/live and /devices/esp32-voltix-001/config.</li>
-            <li>START and STOP write only to /devices/esp32-voltix-001/commands/current.</li>
-            <li>History imports completed device sessions into /users/{currentUser.uid}/history.</li>
-            <li>The web app never writes to /devices/esp32-voltix-001/live.</li>
-          </ul>
+          <div class="advanced-log-table-wrap">
+            <table class="advanced-log-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>V (V)</th>
+                  <th>I (A)</th>
+                  <th>P Active (W)</th>
+                  <th>S Apparent (VA)</th>
+                  <th>Q Reactive (VAR)</th>
+                  <th>PF</th>
+                  <th>Hz</th>
+                </tr>
+              </thead>
+              <tbody id="advancedLogBody">
+                <tr><td colspan="8" class="advanced-log-empty">Waiting for live data...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </section>
       </main>
     </div>
   </div>
 
+  <div id="toast" class="toast" aria-live="polite"></div>
   <script type="module" src="js/advanced.js"></script>
 </body>
 </html>
