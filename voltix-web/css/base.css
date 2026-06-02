@@ -74,16 +74,19 @@ a:hover { opacity: 0.85; }
 
 /* ===== FORM ELEMENTS (voltix legacy) ===== */
 label { display: block; margin: 0.5rem 0; font-size: 13px; color: var(--text-secondary); }
-input, button { font-family: var(--font-body); }
-input {
+input, select, button { font-family: var(--font-body); }
+input,
+select {
   width: 100%; padding: 10px 14px;
   background: var(--bg-elevated); border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text-primary); font-size: 14px;
   outline: none; transition: border-color var(--transition);
 }
-input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px var(--cyan-dim); }
+input:focus,
+select:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px var(--cyan-dim); }
 input::placeholder { color: var(--text-muted); }
+select { cursor: pointer; }
 button {
   padding: 9px 16px;
   border-radius: var(--radius-sm); border: none;
