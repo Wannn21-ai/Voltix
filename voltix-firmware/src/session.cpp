@@ -9,12 +9,15 @@
 #include "time_sync.h"
 
 #include <Arduino.h>
+#include <Preferences.h>
 #include <string.h>
 
 namespace {
 constexpr unsigned long RECOVERY_SETTLE_MS = 1200UL;
 constexpr unsigned long OFFLINE_FINISHED_SUMMARY_MS = 4000UL;
-constexpr const char* OFFLINE_DEVICE_NAME = "Offline Load";
+constexpr const char* PREF_NAMESPACE = "voltix";
+constexpr const char* PREF_OFFLINE_DEVICE_COUNTER = "offline_device_counter";
+constexpr const char* OFFLINE_SESSION_TAG = "Sesi Offline";
 
 enum class RecoveryState {
   IDLE,
@@ -77,6 +80,43 @@ static void makeSessionId(char* out, size_t outSize, unsigned long startedAtMs) 
   snprintf(out, outSize, "sess_%lu", seed);
 }
 
+static unsigned long loadOfflineDeviceCounter() {
+  Preferences prefs;
+  if (!prefs.begin(PREF_NAMESPACE, true)) {
+    return 1UL;
+  }
+
+  const unsigned long counter = prefs.getULong(PREF_OFFLINE_DEVICE_COUNTER, 1UL);
+  prefs.end();
+  return counter == 0 ? 1UL : counter;
+}
+
+static bool saveOfflineDeviceCounter(unsigned long nextCounter) {
+  Preferences prefs;
+  if (!prefs.begin(PREF_NAMESPACE, false)) {
+    Serial.println("[offline] Failed to open Preferences for offline device counter");
+    return false;
+  }
+
+  prefs.putULong(PREF_OFFLINE_DEVICE_COUNTER, nextCounter);
+  prefs.end();
+  Serial.print("[offline] Offline device counter saved next=");
+  Serial.println(nextCounter);
+  return true;
+}
+
+static void assignOfflineDeviceNameIfNeeded() {
+  if (!offlineModeActive || sessionData.deviceName[0] != '\0') {
+    return;
+  }
+
+  const unsigned long counter = loadOfflineDeviceCounter();
+  snprintf(sessionData.deviceName, sizeof(sessionData.deviceName), "Device %lu", counter);
+  Serial.print("[offline] Assigned offline device name=");
+  Serial.println(sessionData.deviceName);
+  saveOfflineDeviceCounter(counter + 1UL);
+}
+
 static CompletedSessionSnapshot makeFinalSnapshot(EndReason reason) {
   CompletedSessionSnapshot snapshot;
   memset(&snapshot, 0, sizeof(snapshot));
@@ -85,6 +125,8 @@ static CompletedSessionSnapshot makeFinalSnapshot(EndReason reason) {
   strlcpy(snapshot.sessionId, sessionData.sessionId, sizeof(snapshot.sessionId));
   strlcpy(snapshot.uid, sessionData.uid, sizeof(snapshot.uid));
   strlcpy(snapshot.deviceName, sessionData.deviceName, sizeof(snapshot.deviceName));
+  snapshot.offlineSession = sessionData.startMode == SystemMode::OFFLINE;
+  snapshot.sessionTag = snapshot.offlineSession ? OFFLINE_SESSION_TAG : "";
   snapshot.startMillis = sessionData.startedAtMs;
   snapshot.stopMillis = sessionData.endedAtMs;
   snapshot.durationSec = sessionData.durationMs / 1000UL;
@@ -231,6 +273,7 @@ static unsigned long currentLoadValidationTimeoutMs() {
 
 static void verifyLoadAndStartMonitoring() {
   const unsigned long now = millis();
+  assignOfflineDeviceNameIfNeeded();
   sessionData.state = SessionState::MONITORING;
   sessionData.endReason = EndReason::NONE;
   sessionData.startedAtMs = now;
@@ -279,6 +322,7 @@ static void cancelLoadValidationNoHistory() {
     offlineFinishedAtMs = 0;
     offlineReadyLogged = true;
     Serial.println("[offline] No load detected, relay OFF");
+    Serial.println("[offline] No load detected, counter not incremented");
     Serial.println("[offline] Ready for next offline device");
   }
 }
@@ -608,7 +652,7 @@ bool offlineModeStartNextAttempt(bool firstAttempt) {
   offlineFinishedAtMs = 0;
   offlineReadyLogged = false;
 
-  const bool started = sessionStart(OFFLINE_DEVICE_NAME);
+  const bool started = sessionStart("");
   if (!started) {
     return false;
   }

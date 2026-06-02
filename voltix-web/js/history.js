@@ -12,6 +12,7 @@ import {
   formatPower,
   formatSessionName,
   isOverloadSession,
+  isOfflineSession,
   isRecoveredSession,
   isValidFirebaseKey,
   normalizeSessionMap,
@@ -167,6 +168,10 @@ function renderFilteredHistory(){
       session.deviceName,
       session.name,
       session.endReason,
+      session.sessionTag,
+      isOfflineSession(session) ? 'Sesi Offline' : '',
+      session.startMode,
+      session.endMode,
       session.syncStatus
     ].some(value=>String(value ?? '').toLowerCase().includes(query)));
   }
@@ -226,6 +231,9 @@ function createHistoryItem(session){
   }else if(String(session.endReason ?? '').trim().toUpperCase() === 'USER_STOP'){
     main.appendChild(createBadge('USER STOP', 'neutral'));
   }
+  if(isOfflineSession(session)){
+    main.appendChild(createBadge('Sesi Offline', 'offline'));
+  }
   if(isRecoveredSession(session)){
     main.appendChild(createBadge('RECOVERED', 'warning'));
   }
@@ -278,7 +286,7 @@ function createBadge(text, type){
 
 function exportCsv(){
   const rows = [
-    ['sessionId','deviceName','dateTime','duration','energyKwh','energyWh','cost','currency','averagePower','peakPower','endReason','syncStatus','recovered']
+    ['sessionId','deviceName','dateTime','duration','energyKwh','energyWh','cost','currency','averagePower','peakPower','endReason','syncStatus','recovered','offlineSession','sessionTag','startMode','endMode']
   ];
 
   state.visibleSessions.forEach(session=>{
@@ -295,7 +303,11 @@ function exportCsv(){
       numberValue(session.peakPower ?? session.power),
       session.endReason,
       session.syncStatus,
-      isRecoveredSession(session)
+      isRecoveredSession(session),
+      isOfflineSession(session),
+      session.sessionTag ?? (isOfflineSession(session) ? 'Sesi Offline' : ''),
+      session.startMode,
+      session.endMode
     ]);
   });
 

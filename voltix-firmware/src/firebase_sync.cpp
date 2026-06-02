@@ -351,12 +351,16 @@ bool firebasePushCompletedSession(const CompletedSessionSnapshot& snapshot) {
   formatDuration(snapshot.durationSec, duration, sizeof(duration));
   formatCostText(snapshot.cost, costText, sizeof(costText));
 
-  StaticJsonDocument<1024> doc;
+  StaticJsonDocument<1280> doc;
   doc["id"] = snapshot.id;
   doc["sessionId"] = snapshot.sessionId;
   doc["deviceId"] = Config::DEVICE_ID;
   doc["uid"] = snapshot.uid;
   doc["name"] = snapshot.deviceName;
+  doc["offlineSession"] = snapshot.offlineSession;
+  if (snapshot.offlineSession) {
+    doc["sessionTag"] = snapshot.sessionTag;
+  }
   doc["duration"] = duration;
   doc["durationSec"] = snapshot.durationSec;
   doc["power"] = snapshot.averagePower;
@@ -384,7 +388,7 @@ bool firebasePushCompletedSession(const CompletedSessionSnapshot& snapshot) {
   doc["date"] = snapshot.date;
   doc["time"] = snapshot.time;
   doc["timestamp"] = snapshot.timestamp;
-  doc["syncStatus"] = "PENDING";
+  doc["syncStatus"] = "SYNCED";
   doc["createdFrom"] = "ESP32";
 
   String payload;

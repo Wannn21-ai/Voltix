@@ -473,6 +473,12 @@ button,
   border-color: rgba(0, 229, 255, 0.26);
 }
 
+.badge.offline {
+  color: var(--cyan);
+  background: linear-gradient(135deg, var(--cyan-dim), var(--amber-dim));
+  border-color: rgba(0, 229, 255, 0.36);
+}
+
 .sidebar-backdrop {
   position: fixed;
   inset: 0;

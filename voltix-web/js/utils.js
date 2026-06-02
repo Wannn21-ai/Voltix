@@ -365,6 +365,14 @@ export function isRecoveredSession(session){
   return session?.recovered === true || cleanText(session?.recoverySource) !== null;
 }
 
+export function isOfflineSession(session){
+  const tag = String(session?.sessionTag ?? '').trim().toLowerCase();
+  const startMode = String(session?.startMode ?? '').trim().toUpperCase();
+  return session?.offlineSession === true ||
+    startMode === 'OFFLINE' ||
+    tag === 'sesi offline';
+}
+
 export function normalizeSessionMap(value){
   if(value === null || value === undefined) return [];
   return Object.entries(value)

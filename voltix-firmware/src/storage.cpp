@@ -147,6 +147,10 @@ bool storageAppendCompletedSession(const CompletedSessionSnapshot& snapshot) {
   entry["deviceId"] = Config::DEVICE_ID;
   entry["uid"] = snapshot.uid;
   entry["name"] = snapshot.deviceName;
+  entry["offlineSession"] = snapshot.offlineSession;
+  if (snapshot.offlineSession) {
+    entry["sessionTag"] = snapshot.sessionTag;
+  }
   entry["duration"] = duration;
   entry["durationSec"] = snapshot.durationSec;
   entry["power"] = snapshot.averagePower;
@@ -389,7 +393,7 @@ bool storageMarkSessionQueued(const char* sessionId) {
   for (JsonObject entry : history) {
     const char* entrySessionId = entry["sessionId"] | entry["id"] | "";
     if (strcmp(entrySessionId, sessionId) == 0) {
-      entry["syncStatus"] = "QUEUED";
+      entry["syncStatus"] = "SYNCED";
       entry["pendingSync"] = false;
       entry["syncedAt"] = millis();
       changed = true;
@@ -404,7 +408,7 @@ bool storageMarkSessionQueued(const char* sessionId) {
   }
 
   const bool saved = writeHistory(doc);
-  Serial.print("[storage] Mark queued ");
+  Serial.print("[storage] Mark synced ");
   Serial.print(sessionId);
   Serial.print(" ");
   Serial.println(saved ? "OK" : "FAIL");
@@ -468,15 +472,17 @@ bool storageSyncPendingHistoryToFirebase() {
       continue;
     }
 
+    entry["syncStatus"] = "SYNCED";
+    entry["pendingSync"] = false;
+    entry["syncedAt"] = millis();
+
     const bool pushed = firebasePushCompletedSession(entry);
     if (pushed) {
-      entry["syncStatus"] = "QUEUED";
-      entry["pendingSync"] = false;
-      entry["syncedAt"] = millis();
       queued++;
     } else {
       entry["syncStatus"] = "PENDING";
       entry["pendingSync"] = true;
+      entry.remove("syncedAt");
       failed++;
     }
   }
