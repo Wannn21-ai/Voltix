@@ -1529,3 +1529,224 @@ main.page-content:not(.dashboard-page):not(.settings-grid):not(.advanced-article
     bottom: 16px;
   }
 }
+
+/* ===== DASHBOARD SMART ENERGY STYLE OVERRIDES ===== */
+body:has(.dashboard-page) .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 70;
+}
+
+body:has(.dashboard-page) .topbar-actions {
+  gap: 0;
+}
+
+body:has(.dashboard-page) .topbar-actions a[href="history.html"] {
+  display: none;
+}
+
+body:has(.dashboard-page) .page-kicker {
+  display: none;
+}
+
+.dashboard-page {
+  width: min(1440px, 100%);
+  gap: 18px;
+  padding: 24px;
+}
+
+.dashboard-page .flat-section {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.dashboard-page .dashboard-section,
+.dashboard-page .insight-section {
+  display: grid;
+  gap: 14px;
+}
+
+.dashboard-page .gauge-grid,
+.dashboard-page .dashboard-stat-grid,
+.dashboard-page .insight-grid,
+.dashboard-page .advanced-reading-grid,
+.dashboard-page .chart-grid {
+  gap: 14px;
+}
+
+.dashboard-page .gauge-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.dashboard-page .dashboard-stat-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dashboard-page .insight-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 0;
+}
+
+.dashboard-page .advanced-reading-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-page .chart-grid {
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+}
+
+.dashboard-page .chart-card.full-width {
+  grid-column: 1 / -1;
+}
+
+.dashboard-page .gauge-card,
+.dashboard-page .dashboard-power-card,
+.dashboard-page .stat-card,
+.dashboard-page .summary-card,
+.dashboard-page .advanced-reading-card,
+.dashboard-page .chart-card {
+  border-radius: 8px;
+  border-color: rgba(0, 229, 255, 0.14);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.032), rgba(255, 255, 255, 0.012)),
+    var(--bg-surface);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.18);
+}
+
+.dashboard-page .gauge-card,
+.dashboard-page .dashboard-power-card {
+  min-height: 260px;
+}
+
+.dashboard-page .dashboard-power-card {
+  border-color: rgba(255, 171, 0, 0.34);
+}
+
+.dashboard-page .dashboard-power-card:not(.power-warning):not(.power-danger) .badge {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.035);
+  border-color: var(--border);
+}
+
+.dashboard-page .power-warning .badge {
+  color: var(--amber);
+  background: var(--amber-dim);
+  border-color: rgba(255, 171, 0, 0.3);
+}
+
+.dashboard-page .power-danger .badge {
+  color: var(--red);
+  background: var(--red-dim);
+  border-color: rgba(255, 23, 68, 0.34);
+}
+
+.dashboard-page .section-head {
+  margin-bottom: 0;
+}
+
+.dashboard-page .section-head h3,
+.dashboard-page .chart-card h3 {
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dashboard-page .advanced-reading-card {
+  min-height: 120px;
+  display: grid;
+  align-content: space-between;
+}
+
+.dashboard-page .advanced-reading-card strong {
+  margin-top: 18px;
+}
+
+.dashboard-page .live-control-bar {
+  top: 78px;
+  justify-content: flex-end;
+  min-height: 0;
+  margin: -6px 0 0;
+}
+
+.dashboard-page .live-control-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.dashboard-page .top-stop-btn {
+  min-width: 112px;
+  border-radius: 8px;
+}
+
+.dashboard-page .notice {
+  border-radius: 8px;
+}
+
+.dashboard-page .fab {
+  border-radius: 8px;
+  font-size: 26px;
+}
+
+.dashboard-page + .fab,
+body:has(.dashboard-page) .fab {
+  box-shadow: 0 0 24px rgba(0, 229, 255, 0.2);
+}
+
+body:has(.dashboard-page) .modal {
+  border-radius: 8px;
+  max-width: 390px;
+}
+
+body:has(.dashboard-page) .modal-head-compact {
+  margin-bottom: -6px;
+}
+
+body:has(.dashboard-page) .modal label strong {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+body:has(.dashboard-page) .command-buttons {
+  margin-top: 2px;
+}
+
+@media (max-width: 1180px) {
+  .dashboard-page .gauge-grid,
+  .dashboard-page .dashboard-stat-grid,
+  .dashboard-page .insight-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-page .advanced-reading-grid,
+  .dashboard-page .chart-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-page {
+    padding: 16px;
+    gap: 14px;
+  }
+
+  .dashboard-page .gauge-grid,
+  .dashboard-page .dashboard-stat-grid,
+  .dashboard-page .insight-grid,
+  .dashboard-page .advanced-reading-grid,
+  .dashboard-page .chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-page .gauge-card,
+  .dashboard-page .dashboard-power-card {
+    min-height: 230px;
+  }
+}

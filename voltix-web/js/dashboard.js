@@ -81,7 +81,7 @@ function bindEls(){
     'connectionStatus','deviceId','deviceName','systemMode','sessionState','relayState','loadDetected',
     'liveControlBar',
     'lastSeen','uptime','ipAddress','voltage','current','power','apparentPower','frequency','pf',
-    'pzemTotalKWh','sessionEnergyWh','sessionEnergyKWh','sessionCost','elapsedSec','peakPower',
+    'pzemTotalKWh','pzemTotalKWH','sessionEnergyWh','sessionEnergyKWh','sessionEnergyKWH','sessionCost','elapsedSec','peakPower',
     'averagePower','tariff','overloadThreshold','warningLimit','overloadInfo','voltageGauge',
     'currentGauge','voltageGaugeValue','currentGaugeValue','powerCard','powerStatusBadge','webStatusText','cmdDeviceName','startBtn','topStopBtn',
     'commandFab','commandModal','commandModalClose',
@@ -213,10 +213,14 @@ function updateLiveUI(live){
   setText('apparentPower', formatUnit(device.apparent ?? device.apparentPower, 1, 'VA'));
   setText('frequency', formatFrequency(device.frequency));
   setText('pf', formatNumber(device.powerFactor ?? device.pf, 2));
-  setText('pzemTotalKWh', formatEnergyKwh(device.energy ?? device.pzemTotalKwh, 6));
+  const pzemEnergyText = formatEnergyKwh(device.energy ?? device.pzemTotalKwh, 6);
+  setText('pzemTotalKWh', pzemEnergyText);
+  setText('pzemTotalKWH', pzemEnergyText);
 
   setText('sessionEnergyWh', formatEnergyWh(session.energyWh, 6));
-  setText('sessionEnergyKWh', formatEnergyKwh(session.energy ?? session.energyKwh, 3));
+  const sessionEnergyText = formatEnergyKwh(session.energy ?? session.energyKwh, 3);
+  setText('sessionEnergyKWh', sessionEnergyText);
+  setText('sessionEnergyKWH', sessionEnergyText);
   setText('sessionCost', formatCost(session.cost, currency, session.costText, currency === 'IDR' ? 'Rp 0' : '$0.00'));
   setText('elapsedSec', formatDuration(session.elapsedSec ?? session.durationSec));
   setText('peakPower', formatPower(session.peakPower));
@@ -457,7 +461,6 @@ function updatePowerStatusBadge(powerState = null){
   if(!els.powerStatusBadge) return;
   const fresh = isLiveFresh(state.live);
   const sessionState = fresh ? String(state.live?.system?.sessionState ?? '').toUpperCase() : 'OFFLINE';
-  const relayOn = fresh && state.live?.system?.relay === true;
   const active = fresh && state.live?.session?.active === true;
   const effectivePowerState = powerState || (
     els.powerCard?.classList.contains('power-danger') ? 'danger' :
@@ -471,9 +474,12 @@ function updatePowerStatusBadge(powerState = null){
     label = 'Overload';
     className = 'badge danger';
   }else if(effectivePowerState === 'warning'){
-    label = 'Monitoring';
+    label = 'Warning';
     className = 'badge warning';
-  }else if(active || relayOn || sessionState === 'MONITORING' || sessionState === 'WAITING_LOAD'){
+  }else if(sessionState === 'WAITING_LOAD'){
+    label = 'Waiting Load';
+    className = 'badge neutral';
+  }else if(active || sessionState === 'MONITORING'){
     label = 'Monitoring';
     className = 'badge success';
   }
