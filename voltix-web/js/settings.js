@@ -63,7 +63,7 @@ async function init(){
 function bindEls(){
   [
     'settingsForm','settingsStatus','settingsMessage','saveSettingsBtn','currency',
-    'theme','language','notifyStale','notifyOverload','notifyCommandAck',
+    'theme','language','notifyVisual','notifyStale','notifyOverload','notifySessionSaved',
     'exportUserHistoryBtn','deleteUserHistoryBtn',
     ...numericFields
   ].forEach(id=>{ els[id] = qs(id); });
@@ -93,6 +93,7 @@ async function loadSettings(){
 
     fillDeviceForm(config);
     fillUiForm(ui);
+    console.log('[settings] loaded device config', config);
     els.settingsStatus.textContent = 'Loaded';
   }catch(error){
     console.error('[settings] failed to load', error);
@@ -134,6 +135,7 @@ async function handleSave(event){
     saveUiSettings(uiSettings);
     setMessage('Settings saved. ESP32 will apply device config on its next config sync.', 'success');
     els.settingsStatus.textContent = 'Saved';
+    console.log('[settings] saved device config', config);
     showToast('Settings saved');
   }catch(error){
     console.error('[settings] failed to save', error);
@@ -169,9 +171,10 @@ function fillDeviceForm(config){
 function fillUiForm(settings){
   els.theme.value = ['electric', 'dark', 'light'].includes(settings.theme) ? settings.theme : 'electric';
   els.language.value = settings.language ?? 'en';
+  els.notifyVisual.checked = settings.notifications?.visual ?? true;
   els.notifyStale.checked = settings.notifications?.stale ?? true;
   els.notifyOverload.checked = settings.notifications?.overload ?? true;
-  els.notifyCommandAck.checked = settings.notifications?.commandAck ?? true;
+  els.notifySessionSaved.checked = settings.notifications?.sessionSaved ?? settings.notifications?.commandAck ?? true;
   applyTheme(els.theme.value);
 }
 
@@ -193,9 +196,11 @@ function readUiSettings(currency){
     language: els.language.value,
     currency,
     notifications: {
+      visual: els.notifyVisual.checked,
       stale: els.notifyStale.checked,
       overload: els.notifyOverload.checked,
-      commandAck: els.notifyCommandAck.checked
+      sessionSaved: els.notifySessionSaved.checked,
+      commandAck: els.notifySessionSaved.checked
     }
   };
 }
@@ -220,9 +225,9 @@ function validateConfig(config){
   }
   if(config.loadPowerThreshold < 0) throw new Error('loadPowerThreshold must be >= 0.');
   if(config.loadCurrentThreshold < 0) throw new Error('loadCurrentThreshold must be >= 0.');
-  if(config.loadRemovedDelaySec < 1) throw new Error('loadRemovedDelaySec must be >= 1.');
-  if(config.offlineTimeoutSec < 10) throw new Error('offlineTimeoutSec must be >= 10.');
-  if(config.checkpointIntervalSec < 5) throw new Error('checkpointIntervalSec must be >= 5.');
+  if(config.loadRemovedDelaySec < 0) throw new Error('loadRemovedDelaySec must be >= 0.');
+  if(config.offlineTimeoutSec < 0) throw new Error('offlineTimeoutSec must be >= 0.');
+  if(config.checkpointIntervalSec <= 0) throw new Error('checkpointIntervalSec must be > 0.');
 }
 
 async function exportUserHistory(){
@@ -247,21 +252,27 @@ async function exportUserHistory(){
       ]);
     });
     downloadText(`voltix-user-history-${Date.now()}.csv`, rows.map(row=>row.map(csvEscape).join(',')).join('\n'), 'text/csv;charset=utf-8');
+    console.log('[settings] exported all history CSV', sessions.length);
   }catch(error){
     setMessage(`Export failed: ${error.message}`, 'error');
   }
 }
 
 async function deleteAllHistory(){
+  const confirmed = window.confirm('Delete all completed history for this device queue and your account? This cannot be undone.');
+  if(!confirmed) return;
+
   const answer = window.prompt(`Type DELETE to clear /devices/${DEVICE_ID}/completedSessions and /users/{your uid}/history.`);
   if(answer !== 'DELETE') return;
 
   setBusy(true, 'Deleting...', 'Deleting...');
   try{
-    await Promise.all([
-      remove(ref(db, `/devices/${DEVICE_ID}/completedSessions`)),
-      remove(ref(db, `/users/${currentUser.uid}/history`))
-    ]);
+    console.log('[settings] deleting all history');
+    await remove(ref(db, `/devices/${DEVICE_ID}/completedSessions`));
+    console.log('[settings] deleted device completedSessions');
+    await remove(ref(db, `/users/${currentUser.uid}/history`));
+    console.log('[settings] deleted user history');
+    console.log('[settings] delete all complete');
     setMessage('All history was cleared from device completedSessions and your account history.', 'success');
     showToast('All history cleared');
   }catch(error){
@@ -273,7 +284,7 @@ async function deleteAllHistory(){
 
 function setBusy(isBusy, status, busyLabel = 'Saving...'){
   els.saveSettingsBtn.disabled = isBusy;
-  els.saveSettingsBtn.textContent = isBusy ? busyLabel : 'Save Settings';
+  els.saveSettingsBtn.textContent = isBusy ? busyLabel : 'Save Device Config';
   if(status !== undefined){
     els.settingsStatus.textContent = status;
   }

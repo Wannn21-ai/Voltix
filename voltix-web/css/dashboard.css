@@ -1530,6 +1530,253 @@ main.page-content:not(.dashboard-page):not(.settings-grid):not(.advanced-article
   }
 }
 
+/* ===== SETTINGS SMART ENERGY STYLE OVERRIDES ===== */
+body:has(.settings-page) .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 70;
+}
+
+.settings-page {
+  width: min(1440px, 100%);
+  max-width: none;
+  margin: 0 auto;
+  padding: 24px;
+  gap: 16px;
+}
+
+.settings-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 4px;
+}
+
+.settings-page-head h1 {
+  font-family: var(--font-display);
+  font-size: clamp(22px, 2.2vw, 28px);
+  line-height: 1.15;
+  color: var(--text-primary);
+}
+
+.settings-page-head p {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.settings-eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.settings-page > .status-message {
+  margin: 0;
+}
+
+.settings-page .settings-form,
+.settings-page .settings-card-grid,
+.settings-secondary-grid {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.settings-page .settings-card-grid,
+.settings-secondary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.settings-page .settings-card {
+  min-width: 0;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  border-color: rgba(0, 229, 255, 0.14);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.032), rgba(255, 255, 255, 0.012)),
+    var(--bg-surface);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.16);
+}
+
+.settings-page .settings-card:hover {
+  border-color: rgba(0, 229, 255, 0.28);
+  box-shadow: 0 16px 38px rgba(0, 229, 255, 0.045);
+}
+
+.settings-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-page .settings-card h3 {
+  margin: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-card-head span {
+  color: var(--cyan);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.settings-page .settings-card label {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.settings-page .settings-card label strong {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.settings-page .settings-card input,
+.settings-page .settings-card select {
+  min-height: 40px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.settings-page .toggle-row {
+  min-height: 52px;
+  padding: 9px 0;
+}
+
+.settings-page .toggle-row strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.settings-page .toggle-row input {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  accent-color: var(--cyan);
+}
+
+.settings-page .settings-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -2px;
+}
+
+.settings-page #saveSettingsBtn,
+.settings-page #exportUserHistoryBtn,
+.settings-page #deleteUserHistoryBtn {
+  border-radius: 8px;
+}
+
+.settings-card-data p {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.settings-page .settings-card-data .actions {
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.settings-about-list {
+  display: grid;
+  gap: 0;
+}
+
+.settings-about-list div {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.65fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-about-list div:last-child {
+  border-bottom: 0;
+}
+
+.settings-about-list span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.settings-about-list strong {
+  color: var(--text-primary);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 980px) {
+  .settings-page .settings-card-grid,
+  .settings-secondary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 820px) {
+  .settings-page {
+    padding: 18px;
+    gap: 14px;
+  }
+
+  .settings-page-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-page .settings-actions,
+  .settings-page .settings-card-data .actions {
+    justify-content: stretch;
+  }
+
+  .settings-page .settings-actions button,
+  .settings-page .settings-card-data .actions button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .settings-page {
+    padding: 14px;
+  }
+
+  .settings-card-head,
+  .settings-about-list div {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-card-head {
+    display: grid;
+  }
+}
+
 /* ===== HISTORY SMART ENERGY STYLE OVERRIDES ===== */
 body:has(.history-page) .topbar {
   position: sticky;
