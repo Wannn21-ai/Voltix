@@ -1,8 +1,28 @@
 import { db, DEVICE_ID } from './firebase-config.js';
-import { ref, onValue } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js';
-import { requireAuth, logout } from './auth.js';
+import { onValue, ref } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js';
+import { logout, requireAuth } from './auth.js';
 import { sendStart, sendStop } from './command.js';
-import { showToast } from './utils.js';
+import {
+  applyTheme,
+  formatCost,
+  formatCurrent,
+  formatDuration,
+  formatEnergyKwh,
+  formatEnergyWh,
+  formatFrequency,
+  formatNumber,
+  formatOnOff,
+  formatPower,
+  formatUnit,
+  formatVoltage,
+  formatYesNo,
+  numberValue,
+  qs,
+  renderShell,
+  safeText,
+  sessionEnergyKwh,
+  showToast
+} from './utils.js';
 import {
   computeEnergyInsights,
   normalizeCompletedSessions,
@@ -10,115 +30,155 @@ import {
 } from './insights.js';
 
 const els = {};
+const LIVE_STALE_MS = 20000;
 const state = {
-  config: null,
+  user: null,
+  config: {},
   live: null,
   insightSessions: [],
-  liveSystemTimestamp: undefined,
-  lastTimestampChangeAt: Date.now(),
-  pendingCommand: null
+  lastLiveTimestamp: null,
+  hasLiveTimestampChanged: false,
+  lastFreshChangeAt: 0,
+  pendingCommand: null,
+  powerSamples: [],
+  charts: {}
 };
 
-function $(id){ return document.getElementById(id); }
-
 async function init(){
-  await requireAuth();
+  applyTheme();
+  state.user = await requireAuth();
+  renderShell('dashboard', 'Dashboard', {
+    user: state.user,
+    onLogout: async ()=>{
+      await logout();
+      window.location.href = 'login.html';
+    }
+  });
+  cleanDashboardShell();
   bindEls();
-  setupAuthUI();
+  els.deviceId.textContent = DEVICE_ID;
+  setupCommands();
+  setupCharts();
   listenLive();
   listenConfig();
-  listenHistoryInsights();
+  listenCompletedSessions();
   listenLastAck();
-  startOnlineChecker();
+  refreshDashboardFreshness();
+  setInterval(refreshDashboardFreshness, 2000);
+}
+
+function cleanDashboardShell(){
+  const kicker = document.querySelector('.topbar-title-block .page-kicker');
+  if(kicker){
+    kicker.innerHTML = `<span id="deviceId" hidden>${DEVICE_ID}</span>`;
+  }
+
+  document.querySelector('.topbar-actions a[href="history.html"]')?.remove();
 }
 
 function bindEls(){
-  ['deviceId','deviceName','systemMode','sessionState','relayState','loadDetected','elapsedSec',
-   'voltage','current','power','apparentPower','frequency','pf','pzemTotalWh',
-   'sessionEnergyWh','sessionEnergyKWh','sessionCost','lastAck','connectionStatus','cmdDeviceName','commandStatus',
-   'startBtn','stopBtn','logoutBtn','dashboardInsightStatus','totalSessions','totalEnergyKwh','totalEnergyWh',
-   'totalCost','highestPeakPower','highestPeakPowerDevice','mostEnergyDevice','mostEnergyValue',
-   'overloadCount','peakWarning','overloadWarning'].forEach(id=>els[id] = $(id));
+  [
+    'connectionStatus','deviceId','deviceName','systemMode','sessionState','relayState','loadDetected',
+    'liveControlBar',
+    'lastSeen','uptime','ipAddress','voltage','current','power','apparentPower','frequency','pf',
+    'pzemTotalKWh','sessionEnergyWh','sessionEnergyKWh','sessionCost','elapsedSec','peakPower',
+    'averagePower','tariff','overloadThreshold','warningLimit','overloadInfo','voltageGauge',
+    'currentGauge','voltageGaugeValue','currentGaugeValue','powerCard','powerStatusBadge','webStatusText','cmdDeviceName','startBtn','topStopBtn',
+    'commandFab','commandModal','commandModalClose',
+    'commandStatus','lastAck','dashboardInsightStatus','totalSessions','totalEnergyKwh',
+    'totalEnergyWh','totalCost','highestPeakPower','highestPeakPowerDevice','mostEnergyDevice',
+    'mostEnergyValue','overloadCount','peakWarning','overloadWarning'
+  ].forEach(id=>{ els[id] = qs(id); });
 }
 
-function setupAuthUI(){
-  els.deviceId.textContent = DEVICE_ID;
-  els.logoutBtn.addEventListener('click', async ()=>{ await logout(); location.href='login.html'; });
+function setupCommands(){
+  els.commandFab?.addEventListener('click', ()=>setCommandModalOpen(true));
+  els.commandModalClose?.addEventListener('click', ()=>setCommandModalOpen(false));
+  els.commandModal?.addEventListener('click', event=>{
+    if(event.target === els.commandModal){
+      setCommandModalOpen(false);
+    }
+  });
 
   els.startBtn.addEventListener('click', async ()=>{
     beginCommandSend('START');
     try{
-      const cmd = await sendStart(els.cmdDeviceName.value, state.config);
+      const cmd = await sendStart(els.cmdDeviceName.value.trim(), state.config);
       waitForAck(cmd);
-      showToast('START sent: '+cmd.id);
-    }catch(e){
+      setCommandModalOpen(false);
+      showToast(`START sent: ${cmd.id}`);
+    }catch(error){
       clearPendingCommand();
-      setCommandStatus('START failed: '+e.message);
-      showToast('Failed: '+e.message);
+      setCommandStatus(`START failed: ${error.message}`);
+      showToast(`START failed: ${error.message}`);
     }
   });
 
-  els.stopBtn.addEventListener('click', async ()=>{
+  els.topStopBtn?.addEventListener('click', sendStopCommand);
+}
+
+async function sendStopCommand(){
     beginCommandSend('STOP');
     try{
-      const sessId = state.live && state.live.session && state.live.session.sessionId;
+      const sessId = state.live?.session?.sessionId;
       const cmd = await sendStop(sessId);
       waitForAck(cmd);
-      showToast('STOP sent: '+cmd.id);
-    }catch(e){
+      setCommandModalOpen(false);
+      showToast(`STOP sent: ${cmd.id}`);
+    }catch(error){
       clearPendingCommand();
-      setCommandStatus('STOP failed: '+e.message);
-      showToast('Failed: '+e.message);
+      setCommandStatus(`STOP failed: ${error.message}`);
+      showToast(`STOP failed: ${error.message}`);
     }
-  });
+}
+
+function setCommandModalOpen(isOpen){
+  if(!els.commandModal) return;
+  els.commandModal.classList.toggle('show', isOpen);
+  els.commandModal.setAttribute('aria-hidden', String(!isOpen));
+  if(isOpen){
+    els.cmdDeviceName?.focus();
+  }
 }
 
 function listenLive(){
-  const liveRef = ref(db, `/devices/${DEVICE_ID}/live`);
-  onValue(liveRef, snap=>{
+  onValue(ref(db, `/devices/${DEVICE_ID}/live`), snap=>{
     const live = snap.val() || {};
     state.live = live;
-    trackLiveTimestamp(live.system || {});
+    trackFreshness(live.system || {});
     updateLiveUI(live);
+    updatePowerChart(live);
+  }, error=>{
+    console.error('[dashboard] live load failed', error);
+    setCommandStatus(`Live read failed: ${error.message}`);
   });
 }
 
 function listenConfig(){
-  const cfgRef = ref(db, `/devices/${DEVICE_ID}/config`);
-  onValue(cfgRef, snap=>{
-    const cfg = snap.val() || {};
-    state.config = cfg;
-    renderHistoryInsights();
+  onValue(ref(db, `/devices/${DEVICE_ID}/config`), snap=>{
+    state.config = snap.val() || {};
+    updateConfigUI();
+    renderInsights();
   });
 }
 
-function listenHistoryInsights(){
-  const sessionsRef = ref(db, `/devices/${DEVICE_ID}/completedSessions`);
-  onValue(sessionsRef, snap=>{
+function listenCompletedSessions(){
+  onValue(ref(db, `/devices/${DEVICE_ID}/completedSessions`), snap=>{
     state.insightSessions = normalizeCompletedSessions(snap.val());
-    renderHistoryInsights();
+    renderInsights();
+    updateHistoryCharts();
   }, error=>{
-    console.error('[dashboard] failed to load history insights', error);
+    console.error('[dashboard] insight history load failed', error);
     state.insightSessions = [];
-    renderHistoryInsights();
-    if(els.dashboardInsightStatus){
-      els.dashboardInsightStatus.textContent = 'Insight load failed';
-    }
+    renderInsights();
+    updateHistoryCharts();
   });
-}
-
-function renderHistoryInsights(){
-  renderInsightElements(els, computeEnergyInsights(state.insightSessions, state.config || {}));
-  if(els.dashboardInsightStatus){
-    els.dashboardInsightStatus.textContent = state.insightSessions.length ? `${state.insightSessions.length} sessions` : 'No sessions';
-  }
 }
 
 function listenLastAck(){
-  const ackRef = ref(db, `/devices/${DEVICE_ID}/commands/lastAck`);
-  onValue(ackRef, snap=>{
+  onValue(ref(db, `/devices/${DEVICE_ID}/commands/lastAck`), snap=>{
     const ack = snap.val();
-    if(!ack) {
+    if(!ack){
       state.lastAck = null;
       els.lastAck.textContent = '-';
       return;
@@ -130,61 +190,309 @@ function listenLastAck(){
 }
 
 function updateLiveUI(live){
+  const fresh = isLiveFresh(live);
   const sys = live.system || {};
-  const device = live.device || {};
-  const session = live.session || {};
+  const rawDevice = live.device || {};
+  const rawSession = live.session || {};
+  const device = fresh ? rawDevice : staleDeviceView();
+  const session = fresh ? rawSession : staleSessionView();
+  const currency = state.config.currency ?? session.currency ?? 'IDR';
 
-  els.deviceName.textContent = safeText(session.deviceName);
-  els.systemMode.textContent = safeText(sys.systemMode);
-  els.sessionState.textContent = safeText(sys.sessionState);
-  els.relayState.textContent = formatOnOff(sys.relay);
-  els.loadDetected.textContent = formatYesNo(device.loadDetected);
-  els.elapsedSec.textContent = formatValue(session.elapsedSec, 0, 's');
+  setText('deviceName', fresh ? (session.deviceName ?? device.deviceName ?? live.deviceName) : '-');
+  setText('systemMode', sys.systemMode);
+  setText('sessionState', fresh ? sys.sessionState : 'OFFLINE');
+  setText('relayState', fresh ? formatOnOff(sys.relay) : 'OFF');
+  setText('loadDetected', formatYesNo(device.loadDetected));
+  setText('lastSeen', formatFreshnessText());
+  setText('uptime', formatDuration(sys.uptime ?? sys.uptimeSec));
+  setText('ipAddress', sys.ip ?? sys.ipAddress ?? live.ip);
 
-  els.voltage.textContent = formatValue(device.voltage, 1, 'V');
-  els.current.textContent = formatValue(device.current, 3, 'A');
-  els.power.textContent = formatValue(device.power, 1, 'W');
-  els.apparentPower.textContent = formatValue(device.apparent, 1, 'VA');
-  els.frequency.textContent = formatValue(device.frequency, 1, 'Hz');
-  els.pf.textContent = formatValue(device.powerFactor, 2);
-  els.pzemTotalWh.textContent = formatValue(device.energy, 6, 'kWh');
+  setText('voltage', formatVoltage(device.voltage));
+  setText('current', formatCurrent(device.current));
+  setText('power', formatPower(device.power));
+  setText('apparentPower', formatUnit(device.apparent ?? device.apparentPower, 1, 'VA'));
+  setText('frequency', formatFrequency(device.frequency));
+  setText('pf', formatNumber(device.powerFactor ?? device.pf, 2));
+  setText('pzemTotalKWh', formatEnergyKwh(device.energy ?? device.pzemTotalKwh, 6));
 
-  els.sessionEnergyWh.textContent = formatValue(session.energyWh, 6, 'Wh');
-  els.sessionEnergyKWh.textContent = formatValue(session.energy, 8, 'kWh');
-  els.sessionCost.textContent = formatValue(session.cost, 4, 'IDR');
+  setText('sessionEnergyWh', formatEnergyWh(session.energyWh, 6));
+  setText('sessionEnergyKWh', formatEnergyKwh(session.energy ?? session.energyKwh, 3));
+  setText('sessionCost', formatCost(session.cost, currency, session.costText, currency === 'IDR' ? 'Rp 0' : '$0.00'));
+  setText('elapsedSec', formatDuration(session.elapsedSec ?? session.durationSec));
+  setText('peakPower', formatPower(session.peakPower));
+  setText('averagePower', formatPower(session.averagePower));
 
-  const relayOn = sys.relay === true;
-  const monitoring = sys.sessionState === 'MONITORING';
-  const sessionActive = session.active === true;
-  updateCommandButtons({ relayOn, monitoring, sessionActive });
+  updateGauges(device);
+  updateOverloadInfo(device, session);
   updateConnectionStatus();
+  updateCommandButtons();
 }
 
-function trackLiveTimestamp(sys){
-  const timestamp = sys.timestamp;
-  if(timestamp === null || timestamp === undefined) return;
+function staleDeviceView(){
+  return {
+    voltage: null,
+    current: null,
+    power: 0,
+    apparent: 0,
+    apparentPower: 0,
+    powerFactor: null,
+    pf: null,
+    frequency: null,
+    loadDetected: false,
+    energy: null,
+    pzemTotalKwh: null
+  };
+}
 
-  if(state.liveSystemTimestamp === undefined || timestamp !== state.liveSystemTimestamp){
-    state.liveSystemTimestamp = timestamp;
-    state.lastTimestampChangeAt = Date.now();
+function staleSessionView(){
+  return {
+    active: false,
+    deviceName: '-',
+    energyWh: null,
+    energy: null,
+    energyKwh: null,
+    cost: null,
+    elapsedSec: null,
+    durationSec: null,
+    peakPower: null,
+    averagePower: null
+  };
+}
+
+function updateConfigUI(){
+  const currency = state.config.currency ?? 'IDR';
+  const threshold = numberValue(state.config.overloadThreshold);
+  const warningPercent = numberValue(state.config.overloadWarningPercent) ?? 90;
+
+  setText('tariff', formatCost(state.config.tariff, currency, null, currency === 'IDR' ? 'Rp 0' : '$0.00'));
+  setText('overloadThreshold', formatPower(threshold));
+  setText('warningLimit', threshold === null ? '-' : formatPower(threshold * (warningPercent / 100)));
+  updateOverloadInfo(state.live?.device || {}, state.live?.session || {});
+}
+
+function updateOverloadInfo(device){
+  if(!isLiveFresh(state.live)){
+    els.overloadInfo.textContent = 'Offline: live readings are stale. Waiting for ESP32 telemetry.';
+    els.overloadInfo.className = 'notice';
+    updatePowerCardState('normal');
+    return;
+  }
+
+  const power = numberValue(device.power);
+  const threshold = numberValue(state.config.overloadThreshold);
+  const warningPercent = numberValue(state.config.overloadWarningPercent) ?? 90;
+
+  if(power === null || threshold === null || threshold <= 0){
+    els.overloadInfo.textContent = 'Waiting for power and threshold data.';
+    els.overloadInfo.className = 'notice';
+    updatePowerCardState('normal');
+    return;
+  }
+
+  const warningLimit = threshold * (warningPercent / 100);
+  if(power >= threshold){
+    els.overloadInfo.textContent = `Overload risk: ${formatPower(power)} is above ${formatPower(threshold)}.`;
+    els.overloadInfo.className = 'notice danger';
+    updatePowerCardState('danger');
+  }else if(power >= warningLimit){
+    els.overloadInfo.textContent = `Warning: ${formatPower(power)} is near the overload threshold.`;
+    els.overloadInfo.className = 'notice warning';
+    updatePowerCardState('warning');
+  }else{
+    els.overloadInfo.textContent = `Load is below warning limit (${formatPower(warningLimit)}).`;
+    els.overloadInfo.className = 'notice success';
+    updatePowerCardState('normal');
   }
 }
 
-function startOnlineChecker(){
-  setInterval(updateConnectionStatus, 2000);
+function updatePowerCardState(stateName){
+  if(!els.powerCard) return;
+  els.powerCard.classList.toggle('power-warning', stateName === 'warning');
+  els.powerCard.classList.toggle('power-danger', stateName === 'danger');
+  updatePowerStatusBadge(stateName);
+}
+
+function updateGauges(device){
+  const voltage = numberValue(device.voltage);
+  const current = numberValue(device.current);
+  setGauge(els.voltageGauge, els.voltageGaugeValue, voltage, 240, formatNumber(voltage, 1));
+  setGauge(els.currentGauge, els.currentGaugeValue, current, 6, formatNumber(current, 3));
+}
+
+function setGauge(gauge, label, value, max, text){
+  if(!gauge || !label) return;
+  const number = numberValue(value) ?? 0;
+  const degrees = Math.max(0, Math.min(360, (number / max) * 360));
+  gauge.style.setProperty('--gauge-value', `${degrees}deg`);
+  label.textContent = text;
+}
+
+function setupCharts(){
+  if(!window.Chart) return;
+  const baseOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { labels: { color: getChartTextColor() } }
+    },
+    scales: {
+      x: { ticks: { color: getChartTextColor() }, grid: { color: getChartGridColor() } },
+      y: { ticks: { color: getChartTextColor() }, grid: { color: getChartGridColor() }, beginAtZero: true }
+    }
+  };
+
+  state.charts.power = new Chart(qs('powerChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [{ label: 'Power W', data: [], borderColor: '#00e5ff', backgroundColor: 'rgba(0,229,255,0.16)', tension: 0.25, fill: true }] },
+    options: baseOptions
+  });
+
+  state.charts.usage = new Chart(qs('usagePieChart'), {
+    type: 'doughnut',
+    data: { labels: [], datasets: [{ data: [], backgroundColor: ['#00e5ff', '#00e676', '#ffab00', '#ff1744', '#888888'] }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: getChartTextColor() } } } }
+  });
+
+  state.charts.comparison = new Chart(qs('comparisonBarChart'), {
+    type: 'bar',
+    data: { labels: [], datasets: [{ label: 'Peak W', data: [], backgroundColor: '#00e5ff', borderColor: '#00e676', borderWidth: 1 }] },
+    options: baseOptions
+  });
+}
+
+function updatePowerChart(live){
+  if(!isLiveFresh(live)) return;
+  const power = numberValue(live?.device?.power);
+  if(power === null || !state.charts.power) return;
+
+  state.powerSamples.push({
+    label: new Date().toLocaleTimeString('id-ID', { hour12: false }),
+    value: power
+  });
+  state.powerSamples = state.powerSamples.slice(-48);
+
+  state.charts.power.data.labels = state.powerSamples.map(sample=>sample.label);
+  state.charts.power.data.datasets[0].data = state.powerSamples.map(sample=>sample.value);
+  state.charts.power.update('none');
+}
+
+function updateHistoryCharts(){
+  if(!window.Chart) return;
+
+  const topEnergy = [...state.insightSessions]
+    .sort((a, b)=>(sessionEnergyKwh(b) ?? 0) - (sessionEnergyKwh(a) ?? 0))
+    .slice(0, 5);
+  if(state.charts.usage){
+    state.charts.usage.data.labels = topEnergy.map(session=>session.deviceName ?? session.name ?? session.sessionId);
+    state.charts.usage.data.datasets[0].data = topEnergy.map(session=>sessionEnergyKwh(session) ?? 0);
+    state.charts.usage.update();
+  }
+
+  const topPeak = [...state.insightSessions]
+    .sort((a, b)=>(numberValue(b.peakPower ?? b.power) ?? 0) - (numberValue(a.peakPower ?? a.power) ?? 0))
+    .slice(0, 6);
+  if(state.charts.comparison){
+    state.charts.comparison.data.labels = topPeak.map(session=>session.deviceName ?? session.name ?? session.sessionId);
+    state.charts.comparison.data.datasets[0].data = topPeak.map(session=>numberValue(session.peakPower ?? session.power) ?? 0);
+    state.charts.comparison.update();
+  }
+}
+
+function renderInsights(){
+  const insights = computeEnergyInsights(state.insightSessions, state.config || {});
+  renderInsightElements(els, insights, state.config.currency ?? 'IDR');
+  els.dashboardInsightStatus.textContent = state.insightSessions.length ? `${state.insightSessions.length} completed sessions` : 'No completed sessions';
+}
+
+function trackFreshness(sys){
+  const timestamp = numberValue(sys.timestamp);
+
+  if(timestamp === null) return;
+  if(state.lastLiveTimestamp === null){
+    state.lastLiveTimestamp = timestamp;
+    return;
+  }
+  if(state.lastLiveTimestamp !== timestamp){
+    state.lastLiveTimestamp = timestamp;
+    state.hasLiveTimestampChanged = true;
+    state.lastFreshChangeAt = Date.now();
+  }
 }
 
 function updateConnectionStatus(){
-  const staleMs = Date.now() - (state.lastTimestampChangeAt || 0);
-  const online = state.liveSystemTimestamp !== undefined && staleMs <= 15000;
-  els.connectionStatus.textContent = online ? 'ESP32 ONLINE' : 'ESP32 OFFLINE / stale';
+  const online = isEspOnline();
+  els.connectionStatus.textContent = online ? 'Online' : 'Offline';
+  els.connectionStatus.className = `status-pill ${online ? 'online' : 'offline'}`;
+  if(els.webStatusText){
+    els.webStatusText.textContent = state.lastLiveTimestamp === null
+      ? 'Web: menunggu ESP32'
+      : online ? 'Web: online' : 'Web: offline';
+  }
+  updatePowerStatusBadge();
+  setText('lastSeen', formatFreshnessText());
+}
+
+function refreshDashboardFreshness(){
+  if(state.live){
+    updateLiveUI(state.live);
+    return;
+  }
+  updateConnectionStatus();
+}
+
+function isLiveFresh(live = state.live){
+  if(!live) return false;
+  const timestamp = numberValue(live?.system?.timestamp);
+  if(timestamp === null || state.lastLiveTimestamp === null || !state.hasLiveTimestampChanged) {
+    return false;
+  }
+  return timestamp === state.lastLiveTimestamp && Date.now() - state.lastFreshChangeAt <= LIVE_STALE_MS;
+}
+
+function isEspOnline(){
+  return isLiveFresh(state.live);
+}
+
+function updatePowerStatusBadge(powerState = null){
+  if(!els.powerStatusBadge) return;
+  const fresh = isLiveFresh(state.live);
+  const sessionState = fresh ? String(state.live?.system?.sessionState ?? '').toUpperCase() : 'OFFLINE';
+  const relayOn = fresh && state.live?.system?.relay === true;
+  const active = fresh && state.live?.session?.active === true;
+  const effectivePowerState = powerState || (
+    els.powerCard?.classList.contains('power-danger') ? 'danger' :
+    els.powerCard?.classList.contains('power-warning') ? 'warning' :
+    'normal'
+  );
+
+  let label = 'Idle';
+  let className = 'badge';
+  if(effectivePowerState === 'danger'){
+    label = 'Overload';
+    className = 'badge danger';
+  }else if(effectivePowerState === 'warning'){
+    label = 'Monitoring';
+    className = 'badge warning';
+  }else if(active || relayOn || sessionState === 'MONITORING' || sessionState === 'WAITING_LOAD'){
+    label = 'Monitoring';
+    className = 'badge success';
+  }
+
+  els.powerStatusBadge.textContent = label;
+  els.powerStatusBadge.className = className;
+}
+
+function formatFreshnessText(){
+  if(!state.lastLiveTimestamp) return '-';
+  if(!state.hasLiveTimestampChanged || !state.lastFreshChangeAt) return 'stale';
+  const age = Math.max(0, Math.trunc((Date.now() - state.lastFreshChangeAt) / 1000));
+  return age <= LIVE_STALE_MS / 1000 ? (age === 0 ? 'just now' : `${age}s ago`) : 'stale';
 }
 
 function beginCommandSend(type){
   state.pendingCommand = {
     id: null,
     type,
-    startedAt: Date.now(),
     timeoutId: null
   };
   setCommandStatus(`Sending ${type}...`);
@@ -192,97 +500,99 @@ function beginCommandSend(type){
 }
 
 function waitForAck(cmd){
-  if(!state.pendingCommand || state.pendingCommand.type !== cmd.type){
-    state.pendingCommand = { type: cmd.type };
-  }
-
-  state.pendingCommand.id = cmd.id;
-  state.pendingCommand.startedAt = Date.now();
-  state.pendingCommand.timeoutId = setTimeout(()=>{
-    if(state.pendingCommand && state.pendingCommand.id === cmd.id){
-      setCommandStatus(`${cmd.type} timeout: no matching ack after 10 seconds`);
-      clearPendingCommand();
-    }
-  }, 10000);
-
-  setCommandStatus(`Waiting for ${cmd.type} ack (${cmd.id})...`);
+  state.pendingCommand = {
+    ...state.pendingCommand,
+    id: cmd.id,
+    type: cmd.type,
+    timeoutId: window.setTimeout(()=>{
+      if(state.pendingCommand?.id === cmd.id){
+        setCommandStatus(`${cmd.type} timeout: no matching ACK after 20 seconds`, 'warning');
+        clearPendingCommand();
+      }
+    }, 20000)
+  };
+  setCommandStatus(`Waiting for ${cmd.type} ACK (${cmd.id})...`);
   updateCommandButtons();
   handleCommandAck(state.lastAck || {});
 }
 
 function handleCommandAck(ack){
-  if(!state.pendingCommand || !state.pendingCommand.id) return;
-  if(ack.id !== state.pendingCommand.id) return;
-
-  const type = ack.type || state.pendingCommand.type;
-  const status = ack.status || 'DONE';
-  const message = ack.message ? `: ${ack.message}` : '';
-  setCommandStatus(`${type} ${status}${message}`);
+  if(!state.pendingCommand?.id || ack.id !== state.pendingCommand.id) return;
+  const status = String(ack.status ?? 'DONE').toUpperCase();
+  const reason = String(ack.reason ?? '').toUpperCase();
+  const noLoadRejected = status === 'REJECTED' && reason === 'NO_LOAD';
+  const userMessage = noLoadRejected
+    ? 'Beban belum terdeteksi. Colokkan beban dulu, lalu Start Monitoring.'
+    : ack.message;
+  const message = userMessage ? `: ${userMessage}` : '';
+  const tone = status === 'REJECTED' ? 'warning' : status === 'ERROR' ? 'error' : 'success';
+  setCommandStatus(`${ack.type ?? state.pendingCommand.type} ${status}${message}`, tone);
+  if(status === 'REJECTED'){
+    showToast(userMessage || 'Command rejected');
+  }
   clearPendingCommand();
 }
 
 function clearPendingCommand(){
-  if(state.pendingCommand && state.pendingCommand.timeoutId){
-    clearTimeout(state.pendingCommand.timeoutId);
+  if(state.pendingCommand?.timeoutId){
+    window.clearTimeout(state.pendingCommand.timeoutId);
   }
   state.pendingCommand = null;
   updateCommandButtons();
 }
 
-function updateCommandButtons(liveState){
-  const sys = (state.live && state.live.system) || {};
-  const session = (state.live && state.live.session) || {};
-  const relayOn = liveState ? liveState.relayOn : sys.relay === true;
-  const monitoring = liveState ? liveState.monitoring : sys.sessionState === 'MONITORING';
-  const sessionActive = liveState ? liveState.sessionActive : session.active === true;
+function updateCommandButtons(){
+  const fresh = isLiveFresh(state.live);
+  const sys = fresh ? (state.live?.system || {}) : {};
+  const session = fresh ? (state.live?.session || {}) : {};
   const waiting = !!state.pendingCommand;
+  const relayOn = sys.relay === true;
+  const sessionState = String(sys.sessionState ?? '').toUpperCase();
+  const busy = relayOn || session.active === true || sessionState === 'MONITORING' || sessionState === 'WAITING_LOAD';
 
-  els.startBtn.disabled = waiting || relayOn || monitoring;
-  els.stopBtn.disabled = waiting || (!relayOn && !sessionActive);
-  els.startBtn.textContent = waiting && state.pendingCommand.type === 'START' ? 'Sending START...' : 'START';
-  els.stopBtn.textContent = waiting && state.pendingCommand.type === 'STOP' ? 'Sending STOP...' : 'STOP';
-}
-
-function setCommandStatus(message){
-  if(els.commandStatus){
-    els.commandStatus.textContent = message;
+  els.startBtn.disabled = waiting || busy;
+  const stopDisabled = waiting || (!busy && session.active !== true);
+  if(els.topStopBtn){
+    els.topStopBtn.disabled = stopDisabled;
+    els.topStopBtn.hidden = stopDisabled && state.pendingCommand?.type !== 'STOP';
+    els.topStopBtn.classList.toggle('is-active', busy && !waiting);
+  }
+  if(els.liveControlBar){
+    els.liveControlBar.hidden = !els.topStopBtn || els.topStopBtn.hidden;
+  }
+  els.startBtn.textContent = waiting && state.pendingCommand?.type === 'START' ? 'Sending START...' : 'Start Monitoring';
+  if(els.topStopBtn){
+    els.topStopBtn.textContent = waiting && state.pendingCommand?.type === 'STOP' ? 'Sending STOP...' : 'Stop';
   }
 }
 
-function formatValue(value, decimals, unit = ''){
-  if(value === null || value === undefined) return '-';
-  const number = Number(value);
-  if(Number.isNaN(number)) return '-';
-  const suffix = unit ? unit : '';
-  return `${number.toFixed(decimals)}${suffix}`;
-}
-
-function safeText(value){
-  if(value === null || value === undefined || value === '') return '-';
-  return String(value);
-}
-
-function formatYesNo(value){
-  if(value === null || value === undefined) return '-';
-  return value ? 'Yes' : 'No';
-}
-
-function formatOnOff(value){
-  if(value === null || value === undefined) return '-';
-  return value ? 'ON' : 'OFF';
+function setCommandStatus(message, tone = ''){
+  els.commandStatus.textContent = message;
+  els.commandStatus.className = tone ? `command-status ${tone}` : 'command-status';
 }
 
 function formatAck(ack){
-  const lines = [
-    `ID: ${safeText(ack.id)}`,
-    `Type: ${safeText(ack.type)}`,
-    `Status: ${safeText(ack.status)}`,
-    `Message: ${safeText(ack.message)}`
+  const fields = [
+    ['ID', ack.id],
+    ['Type', ack.type],
+    ['Status', ack.status],
+    ['Reason', ack.reason],
+    ['Message', ack.message],
+    ['Processed At', ack.processedAt]
   ];
-  if(ack.processedAt !== null && ack.processedAt !== undefined){
-    lines.push(`Processed At: ${ack.processedAt}`);
-  }
-  return lines.join('\n');
+  return fields.map(([label, value])=>`${label}: ${safeText(value)}`).join('\n');
+}
+
+function setText(id, value){
+  if(els[id]) els[id].textContent = safeText(value);
+}
+
+function getChartTextColor(){
+  return getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#90aeb0';
+}
+
+function getChartGridColor(){
+  return getComputedStyle(document.documentElement).getPropertyValue('--line').trim() || 'rgba(255,255,255,0.12)';
 }
 
 window.addEventListener('load', ()=>init());

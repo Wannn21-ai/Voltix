@@ -76,6 +76,8 @@ struct CompletedSessionSnapshot {
   char sessionId[24];
   char uid[64];
   char deviceName[32];
+  bool offlineSession;
+  const char* sessionTag;
   unsigned long startMillis;
   unsigned long stopMillis;
   unsigned long durationSec;

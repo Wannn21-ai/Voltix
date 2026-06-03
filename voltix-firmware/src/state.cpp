@@ -87,3 +87,12 @@ const char* endReasonToString(EndReason reason) {
   }
   return "UNKNOWN";
 }
+
+const char* offlineEntryReasonToString(OfflineEntryReason reason) {
+  switch (reason) {
+    case OfflineEntryReason::AUTO_NO_INTERNET: return "AUTO_NO_INTERNET";
+    case OfflineEntryReason::BOOT_10S: return "BOOT_10S";
+    case OfflineEntryReason::CAPTIVE_PORTAL: return "CAPTIVE_PORTAL";
+  }
+  return "UNKNOWN";
+}

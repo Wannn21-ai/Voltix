@@ -1,46 +1,78 @@
 import { auth } from './firebase-config.js';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut
+} from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
+import { applyTheme, qs, showToast } from './utils.js';
 
 export function initLogin(){
-  const emailEl = document.getElementById('email');
-  const passEl = document.getElementById('password');
-  const loginBtn = document.getElementById('loginBtn');
-  const regBtn = document.getElementById('registerBtn');
+  applyTheme();
+
+  const emailEl = qs('email');
+  const passEl = qs('password');
+  const loginBtn = qs('loginBtn');
+  const regBtn = qs('registerBtn');
+  const form = qs('authForm');
+  const message = qs('authMessage');
+
+  onAuthStateChanged(auth, user=>{
+    if(user){
+      window.location.href = 'dashboard.html';
+    }
+  });
+
+  form.addEventListener('submit', event=>{
+    event.preventDefault();
+    loginBtn.click();
+  });
 
   loginBtn.addEventListener('click', async ()=>{
-    try{
-      await signInWithEmailAndPassword(auth, emailEl.value, passEl.value);
+    await runAuthAction('Login', message, async ()=>{
+      await signInWithEmailAndPassword(auth, emailEl.value.trim(), passEl.value);
       window.location.href = 'dashboard.html';
-    }catch(e){
-      alert('Login failed: '+e.message);
-    }
+    });
   });
 
   regBtn.addEventListener('click', async ()=>{
-    try{
-      await createUserWithEmailAndPassword(auth, emailEl.value, passEl.value);
+    await runAuthAction('Register', message, async ()=>{
+      await createUserWithEmailAndPassword(auth, emailEl.value.trim(), passEl.value);
       window.location.href = 'dashboard.html';
-    }catch(e){
-      alert('Register failed: '+e.message);
-    }
-  });
-
-  onAuthStateChanged(auth,user=>{
-    if(user){
-      // stay on page or redirect to dashboard
-    }
-  });
-}
-
-export function requireAuth(redirectTo='login.html'){
-  return new Promise((resolve)=>{
-    onAuthStateChanged(auth,user=>{
-      if(!user) location.href = redirectTo;
-      else resolve(user);
     });
   });
 }
 
-export function logout(){
-  return signOut(auth);
+export function requireAuth(redirectTo = 'login.html'){
+  return new Promise(resolve=>{
+    const unsubscribe = onAuthStateChanged(auth, user=>{
+      unsubscribe();
+      if(!user){
+        window.location.href = redirectTo;
+        return;
+      }
+      resolve(user);
+    });
+  });
+}
+
+export async function logout(){
+  await signOut(auth);
+}
+
+async function runAuthAction(label, message, action){
+  setAuthMessage(message, `${label} in progress...`, '');
+  try{
+    await action();
+  }catch(error){
+    console.error(`[auth] ${label.toLowerCase()} failed`, error);
+    setAuthMessage(message, `${label} failed: ${error.message}`, 'error');
+    showToast(`${label} failed`);
+  }
+}
+
+function setAuthMessage(element, text, type){
+  if(!element) return;
+  element.textContent = text;
+  element.className = type ? `status-message ${type}` : 'status-message';
 }

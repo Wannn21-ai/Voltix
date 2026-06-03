@@ -1,4 +1,5 @@
 #include "session.h"
+#include "config.h"
 #include "firebase_sync.h"
 #include "network.h"
 #include "relay.h"
@@ -8,10 +9,16 @@
 #include "time_sync.h"
 
 #include <Arduino.h>
+#include <Preferences.h>
 #include <string.h>
 
 namespace {
 constexpr unsigned long RECOVERY_SETTLE_MS = 1200UL;
+constexpr unsigned long OFFLINE_FINISHED_SUMMARY_MS = 4000UL;
+constexpr const char* PREF_NAMESPACE = "voltix";
+constexpr const char* PREF_OFFLINE_DEVICE_COUNTER = "offline_device_counter";
+constexpr const char* PREF_OFFLINE_DEVICE_COUNTER_NVS = "off_dev_count";
+constexpr const char* OFFLINE_SESSION_TAG = "Sesi Offline";
 
 enum class RecoveryState {
   IDLE,
@@ -27,7 +34,16 @@ unsigned long recoveryStartedAtMs = 0;
 unsigned long lastCheckpointWriteMs = 0;
 unsigned long elapsedBeforeRecoveryMs = 0;
 unsigned long resumeMillis = 0;
+unsigned long loadValidationStartedAtMs = 0;
+unsigned int loadValidationStableSamples = 0;
+bool loadValidationWaitingLogged = false;
+StartValidationResult startValidationResult = StartValidationResult::NONE;
 char recoveryStatusText[48] = "idle";
+bool offlineModeActive = false;
+bool offlineNoLoadPrompt = false;
+bool offlineReadyLogged = false;
+unsigned long offlineFinishedAtMs = 0;
+unsigned long offlineDeviceCounter = 1UL;
 }
 
 static void updateSessionTotals() {
@@ -66,6 +82,52 @@ static void makeSessionId(char* out, size_t outSize, unsigned long startedAtMs) 
   snprintf(out, outSize, "sess_%lu", seed);
 }
 
+static unsigned long loadOfflineDeviceCounter() {
+  Preferences prefs;
+  if (!prefs.begin(PREF_NAMESPACE, true)) {
+    return 1UL;
+  }
+
+  unsigned long counter = prefs.getULong(PREF_OFFLINE_DEVICE_COUNTER_NVS, 0UL);
+  if (counter == 0) {
+    counter = prefs.getULong(PREF_OFFLINE_DEVICE_COUNTER, 1UL);
+  }
+  prefs.end();
+  return counter == 0 ? 1UL : counter;
+}
+
+static bool saveOfflineDeviceCounter(unsigned long nextCounter) {
+  Preferences prefs;
+  if (!prefs.begin(PREF_NAMESPACE, false)) {
+    Serial.println("[offline] Failed to open Preferences for offline device counter");
+    return false;
+  }
+
+  const size_t written = prefs.putULong(PREF_OFFLINE_DEVICE_COUNTER_NVS, nextCounter);
+  prefs.end();
+  if (written == 0) {
+    Serial.println("[offline] Failed to save offline device counter");
+    return false;
+  }
+  Serial.print("[offline] Offline device counter saved next=");
+  Serial.println(nextCounter);
+  return true;
+}
+
+static void assignOfflineDeviceNameIfNeeded() {
+  if (!offlineModeActive || sessionData.deviceName[0] != '\0') {
+    return;
+  }
+
+  snprintf(sessionData.deviceName, sizeof(sessionData.deviceName), "Device %lu", offlineDeviceCounter);
+  Serial.print("[offline] Assigned offline device name=");
+  Serial.println(sessionData.deviceName);
+  offlineDeviceCounter++;
+  if (!saveOfflineDeviceCounter(offlineDeviceCounter)) {
+    offlineDeviceCounter = loadOfflineDeviceCounter();
+  }
+}
+
 static CompletedSessionSnapshot makeFinalSnapshot(EndReason reason) {
   CompletedSessionSnapshot snapshot;
   memset(&snapshot, 0, sizeof(snapshot));
@@ -74,6 +136,8 @@ static CompletedSessionSnapshot makeFinalSnapshot(EndReason reason) {
   strlcpy(snapshot.sessionId, sessionData.sessionId, sizeof(snapshot.sessionId));
   strlcpy(snapshot.uid, sessionData.uid, sizeof(snapshot.uid));
   strlcpy(snapshot.deviceName, sessionData.deviceName, sizeof(snapshot.deviceName));
+  snapshot.offlineSession = sessionData.startMode == SystemMode::OFFLINE;
+  snapshot.sessionTag = snapshot.offlineSession ? OFFLINE_SESSION_TAG : "";
   snapshot.startMillis = sessionData.startedAtMs;
   snapshot.stopMillis = sessionData.endedAtMs;
   snapshot.durationSec = sessionData.durationMs / 1000UL;
@@ -100,8 +164,7 @@ static CompletedSessionSnapshot makeFinalSnapshot(EndReason reason) {
 }
 
 static bool shouldCheckpointState() {
-  return sessionData.state == SessionState::WAITING_LOAD ||
-         sessionData.state == SessionState::MONITORING ||
+  return sessionData.state == SessionState::MONITORING ||
          sessionData.state == SessionState::OVERLOAD;
 }
 
@@ -195,35 +258,155 @@ static void finalizeRecoveredNoLoad() {
     } else {
       Serial.println("[recovery] WiFi offline, recovered session saved as pending sync");
     }
+  } else {
+    storageClearActiveSessionCheckpoint();
   }
 
   sessionData.state = SessionState::FINISHED;
   recoveryState = saved ? RecoveryState::FINALIZED : RecoveryState::FAILED;
   strlcpy(recoveryStatusText, saved ? "finalized_no_load" : "finalize_failed", sizeof(recoveryStatusText));
-  Serial.println("[recovery] no load found, session finalized");
+  Serial.println("[recovery] No load found, recovery finalized once");
+}
+
+static bool isLoadAboveStartThreshold() {
+  return sensorData.valid &&
+         sensorData.current >= appConfig.loadCurrentThresholdA &&
+         sensorData.power >= appConfig.loadPowerThresholdW;
+}
+
+static void resetLoadValidationState() {
+  loadValidationStartedAtMs = 0;
+  loadValidationStableSamples = 0;
+  loadValidationWaitingLogged = false;
+}
+
+static unsigned long currentLoadValidationTimeoutMs() {
+  return offlineModeActive ? Config::OFFLINE_LOAD_DETECT_TIMEOUT_MS : Config::LOAD_DETECT_TIMEOUT_MS;
+}
+
+static void verifyLoadAndStartMonitoring() {
+  const unsigned long now = millis();
+  assignOfflineDeviceNameIfNeeded();
+  sessionData.state = SessionState::MONITORING;
+  sessionData.endReason = EndReason::NONE;
+  sessionData.startedAtMs = now;
+  sessionData.endedAtMs = 0;
+  sessionData.lastUpdateMs = now;
+  sessionData.durationMs = 0;
+  sessionData.startEnergyKwh = sensorData.energy;
+  sessionData.energyWh = 0.0f;
+  sessionData.energyKwh = 0.0f;
+  sessionData.cost = 0.0f;
+  sessionData.averagePowerW = 0.0f;
+  sessionData.peakPowerW = sensorData.power > 0.0f ? sensorData.power : 0.0f;
+  sessionData.pendingSync = false;
+  resetLoadValidationState();
+  startValidationResult = StartValidationResult::VERIFIED;
+  Serial.println("[LoadCheck] Load verified, monitoring started");
+  if (offlineModeActive) {
+    offlineNoLoadPrompt = false;
+    offlineReadyLogged = false;
+    Serial.println("[offline] Load detected, offline monitoring started");
+  }
+  sessionWriteCheckpoint();
+}
+
+static void cancelLoadValidationNoHistory() {
+  relaySet(false);
+  sessionData.endReason = EndReason::NO_LOAD_DETECTED;
+  sessionData.state = SessionState::IDLE;
+  sessionData.startedAtMs = 0;
+  sessionData.endedAtMs = 0;
+  sessionData.lastUpdateMs = 0;
+  sessionData.durationMs = 0;
+  sessionData.startEnergyKwh = sensorData.energy;
+  sessionData.energyWh = 0.0f;
+  sessionData.energyKwh = 0.0f;
+  sessionData.cost = 0.0f;
+  sessionData.averagePowerW = 0.0f;
+  sessionData.peakPowerW = 0.0f;
+  sessionData.pendingSync = false;
+  storageClearActiveSessionCheckpoint();
+  resetLoadValidationState();
+  startValidationResult = StartValidationResult::REJECTED_NO_LOAD;
+  Serial.println("[LoadCheck] No load detected, relay OFF");
+  if (offlineModeActive) {
+    offlineNoLoadPrompt = true;
+    offlineFinishedAtMs = 0;
+    offlineReadyLogged = true;
+    Serial.println("[offline] No load detected, relay OFF");
+    Serial.println("[offline] No load detected, counter not incremented");
+    Serial.println("[offline] Ready for next offline device");
+  }
+}
+
+static void handleLoadValidation() {
+  if (sessionData.state != SessionState::WAITING_LOAD) {
+    return;
+  }
+
+  const unsigned long now = millis();
+  if (loadValidationStartedAtMs == 0) {
+    loadValidationStartedAtMs = now;
+  }
+
+  if (!loadValidationWaitingLogged) {
+    Serial.println(offlineModeActive ? "[offline] Waiting load..." : "[LoadCheck] Waiting load");
+    loadValidationWaitingLogged = true;
+  }
+
+  if (now - loadValidationStartedAtMs >= currentLoadValidationTimeoutMs()) {
+    cancelLoadValidationNoHistory();
+    return;
+  }
+
+  if (now - loadValidationStartedAtMs < Config::LOAD_SETTLE_MS) {
+    return;
+  }
+
+  if (isLoadAboveStartThreshold()) {
+    loadValidationStableSamples++;
+  } else {
+    loadValidationStableSamples = 0;
+  }
+
+  if (loadValidationStableSamples >= Config::LOAD_DETECT_STABLE_SAMPLES) {
+    verifyLoadAndStartMonitoring();
+  }
 }
 
 void sessionBegin() {
   sessionData.state = SessionState::IDLE;
   sessionData.endReason = EndReason::NONE;
+  offlineDeviceCounter = loadOfflineDeviceCounter();
+  const unsigned long historyCounter = storageNextOfflineDeviceCounterFromHistory();
+  if (historyCounter > offlineDeviceCounter) {
+    offlineDeviceCounter = historyCounter;
+    saveOfflineDeviceCounter(offlineDeviceCounter);
+  }
+  Serial.print("[offline] Loaded offline device counter=");
+  Serial.println(offlineDeviceCounter);
+  resetLoadValidationState();
+  startValidationResult = StartValidationResult::NONE;
   Serial.println("[session] Ready");
 }
 
-void sessionStart(const char* deviceName) {
+bool sessionStart(const char* deviceName) {
   if (sessionIsActive()) {
-    return;
+    return false;
   }
 
   const char* name = deviceName == nullptr ? appConfig.deviceName : deviceName;
+  const unsigned long now = millis();
   strlcpy(sessionData.deviceName, name, sizeof(sessionData.deviceName));
   sessionData.state = SessionState::WAITING_LOAD;
   sessionData.endReason = EndReason::NONE;
-  sessionData.startedAtMs = millis();
-  makeSessionId(sessionData.sessionId, sizeof(sessionData.sessionId), sessionData.startedAtMs);
+  sessionData.startedAtMs = 0;
+  makeSessionId(sessionData.sessionId, sizeof(sessionData.sessionId), now);
   sessionData.uid[0] = '\0';
   sessionData.startMode = systemMode;
   sessionData.endedAtMs = 0;
-  sessionData.lastUpdateMs = sessionData.startedAtMs;
+  sessionData.lastUpdateMs = 0;
   sessionData.durationMs = 0;
   sessionData.startEnergyKwh = sensorData.energy;
   sessionData.energyWh = 0.0f;
@@ -234,11 +417,17 @@ void sessionStart(const char* deviceName) {
   sessionData.pendingSync = false;
   elapsedBeforeRecoveryMs = 0;
   resumeMillis = 0;
+  loadValidationStartedAtMs = now;
+  loadValidationStableSamples = 0;
+  loadValidationWaitingLogged = false;
+  startValidationResult = StartValidationResult::NONE;
 
   relaySet(true);
-  Serial.print("[session] Started for device ");
+  Serial.println("[LoadCheck] START requested, validating load");
+  Serial.println("[LoadCheck] Relay ON for validation");
+  Serial.print("[session] Validating load for device ");
   Serial.println(sessionData.deviceName);
-  sessionWriteCheckpoint();
+  return true;
 }
 
 void sessionSetRemoteContext(const char* uid, const char* sessionId) {
@@ -248,11 +437,18 @@ void sessionSetRemoteContext(const char* uid, const char* sessionId) {
   if (sessionId != nullptr && sessionId[0] != '\0') {
     strlcpy(sessionData.sessionId, sessionId, sizeof(sessionData.sessionId));
   }
-  sessionWriteCheckpoint();
+  if (shouldCheckpointState()) {
+    sessionWriteCheckpoint();
+  }
 }
 
 void sessionStop(EndReason reason) {
   if (!sessionIsActive()) {
+    return;
+  }
+
+  if (sessionData.state == SessionState::WAITING_LOAD) {
+    cancelLoadValidationNoHistory();
     return;
   }
 
@@ -313,6 +509,14 @@ void sessionStop(EndReason reason) {
   sessionData.state = SessionState::FINISHED;
   elapsedBeforeRecoveryMs = 0;
   resumeMillis = 0;
+  if (offlineModeActive) {
+    offlineNoLoadPrompt = false;
+    offlineFinishedAtMs = millis();
+    offlineReadyLogged = false;
+    if (reason == EndReason::LOAD_REMOVED && saved) {
+      Serial.println("[offline] Load removed, session saved locally");
+    }
+  }
   Serial.print("[session] Finished name=");
   Serial.print(sessionData.deviceName);
   Serial.print(" durationSec=");
@@ -334,6 +538,11 @@ void sessionStop(EndReason reason) {
 }
 
 void sessionUpdate() {
+  if (sessionData.state == SessionState::WAITING_LOAD) {
+    handleLoadValidation();
+    return;
+  }
+
   if (!sessionIsActive()) {
     return;
   }
@@ -353,11 +562,6 @@ void sessionUpdate() {
     return;
   }
 
-  if (sessionData.state == SessionState::WAITING_LOAD && sensorData.loadDetected) {
-    sessionData.state = SessionState::MONITORING;
-    Serial.println("[session] Load detected, monitoring");
-  }
-
   if (sessionData.state == SessionState::MONITORING && !sensorData.loadDetected) {
     sessionStop(EndReason::LOAD_REMOVED);
     return;
@@ -370,6 +574,16 @@ bool sessionIsActive() {
          sessionData.state == SessionState::MONITORING ||
          sessionData.state == SessionState::OVERLOAD ||
          sessionData.state == SessionState::FINISHING;
+}
+
+bool sessionConsumeStartValidationResult(StartValidationResult& result) {
+  if (startValidationResult == StartValidationResult::NONE) {
+    return false;
+  }
+
+  result = startValidationResult;
+  startValidationResult = StartValidationResult::NONE;
+  return true;
 }
 
 void sessionRecoveryBegin() {
@@ -442,4 +656,86 @@ bool sessionReadCheckpointJson(String& out) {
 
 bool sessionClearCheckpoint() {
   return storageClearActiveSessionCheckpoint();
+}
+
+bool offlineModeCanStartNextAttempt() {
+  return offlineModeActive &&
+         !relayIsOn() &&
+         !sessionIsActive();
+}
+
+bool offlineModeStartNextAttempt(bool firstAttempt) {
+  if (!offlineModeCanStartNextAttempt()) {
+    return false;
+  }
+
+  systemMode = SystemMode::OFFLINE;
+  offlineNoLoadPrompt = false;
+  offlineFinishedAtMs = 0;
+  offlineReadyLogged = false;
+
+  const bool started = sessionStart("");
+  if (!started) {
+    return false;
+  }
+
+  if (firstAttempt) {
+    Serial.println("[offline] First offline attempt relay ON");
+  } else {
+    Serial.println("[offline] BOOT 1s next device validation");
+  }
+  return true;
+}
+
+bool offlineModeEnter(OfflineEntryReason reason) {
+  offlineModeActive = true;
+  offlineNoLoadPrompt = false;
+  offlineFinishedAtMs = 0;
+  offlineReadyLogged = false;
+  systemMode = SystemMode::OFFLINE;
+  networkStopPortalForOffline();
+
+  Serial.print("[offline] Enter offline mode reason=");
+  Serial.println(offlineEntryReasonToString(reason));
+
+  offlineModeStartNextAttempt(true);
+  return true;
+}
+
+void offlineModeUpdate() {
+  if (!offlineModeActive) {
+    return;
+  }
+
+  systemMode = networkIsConnected() ? SystemMode::ONLINE : SystemMode::OFFLINE;
+
+  if (sessionData.state == SessionState::FINISHED &&
+      offlineFinishedAtMs > 0 &&
+      millis() - offlineFinishedAtMs >= OFFLINE_FINISHED_SUMMARY_MS) {
+    sessionData.state = SessionState::IDLE;
+    offlineFinishedAtMs = 0;
+  }
+
+  if (!sessionIsActive() &&
+      !relayIsOn() &&
+      !offlineNoLoadPrompt &&
+      offlineFinishedAtMs == 0 &&
+      !offlineReadyLogged) {
+    offlineReadyLogged = true;
+    Serial.println("[offline] Ready for next offline device");
+  }
+}
+
+bool offlineModeIsActive() {
+  return offlineModeActive;
+}
+
+bool offlineModeShowNoLoadPrompt() {
+  return offlineModeActive && offlineNoLoadPrompt;
+}
+
+bool offlineModeShowFinishedSummary() {
+  return offlineModeActive &&
+         sessionData.state == SessionState::FINISHED &&
+         offlineFinishedAtMs > 0;
 }

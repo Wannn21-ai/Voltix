@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-void indicatorsBegin() {
+static void writeSafeDefaults() {
   pinMode(Config::WIFI_LED_PIN, OUTPUT);
   pinMode(Config::GREEN_LED_PIN, OUTPUT);
   pinMode(Config::RED_LED_PIN, OUTPUT);
@@ -13,6 +13,15 @@ void indicatorsBegin() {
   digitalWrite(Config::GREEN_LED_PIN, LOW);
   digitalWrite(Config::RED_LED_PIN, LOW);
   digitalWrite(Config::BUZZER_PIN, LOW);
+}
+
+void indicatorsForceSafeEarly() {
+  writeSafeDefaults();
+  Serial.println("[boot] Indicators forced safe early");
+}
+
+void indicatorsBegin() {
+  writeSafeDefaults();
   Serial.println("[indicators] Initialized");
 }
 

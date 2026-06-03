@@ -8,62 +8,77 @@
   <link rel="stylesheet" href="css/dashboard.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">Voltix History</div>
-    <div class="controls">
-      <a class="button-link" href="dashboard.html">Back to Dashboard</a>
-      <button id="refreshBtn">Refresh</button>
+  <div class="app-layout">
+    <aside class="sidebar" id="sidebar"></aside>
+
+    <div class="main-content" id="main-content">
+      <header class="topbar" id="topbar"></header>
+
+      <main class="page-content">
+        <section class="summary-grid">
+          <div class="summary-card"><span>Total sessions</span><strong id="totalSessions">0 sessions</strong></div>
+          <div class="summary-card"><span>Total energy</span><strong id="totalEnergyKwh">0.000000 kWh</strong><small id="totalEnergyWh">0.000 Wh</small></div>
+          <div class="summary-card"><span>Total cost</span><strong id="totalCost">Rp 0</strong></div>
+          <div class="summary-card"><span>Highest peak power</span><strong id="highestPeakPower">-</strong><small id="highestPeakPowerDevice">-</small></div>
+          <div class="summary-card"><span>Most energy used</span><strong id="mostEnergyDevice">-</strong><small id="mostEnergyValue">-</small></div>
+          <div class="summary-card"><span>Overload sessions</span><strong id="overloadCount">0 sessions</strong></div>
+        </section>
+        <div class="insight-warnings">
+          <p id="peakWarning" class="warning-message" hidden></p>
+          <p id="overloadWarning" class="warning-message danger" hidden></p>
+        </div>
+
+        <section class="history-main-section flat-section">
+          <div class="section-head">
+            <div>
+              <h3>Completed Sessions</h3>
+              <p id="historyStatus">Loading...</p>
+            </div>
+          </div>
+
+          <div class="filter-tabs" aria-label="History filters">
+            <button class="filter-tab active" type="button" data-history-filter="all">All</button>
+            <button class="filter-tab" type="button" data-history-filter="overload">Overload</button>
+            <button class="filter-tab" type="button" data-history-filter="recovered">Recovered</button>
+            <button class="filter-tab" type="button" data-history-filter="pending">Not Synced</button>
+          </div>
+
+          <div class="history-toolbar">
+            <label class="search-wrap">
+              <strong>Search</strong>
+              <input id="historySearch" placeholder="Device, session id, reason">
+            </label>
+            <label>
+              <strong>Filter</strong>
+              <select id="historyFilter">
+                <option value="all">All sessions</option>
+                <option value="overload">Overload</option>
+                <option value="recovered">Recovered</option>
+                <option value="pending">Not synced</option>
+              </select>
+            </label>
+            <label>
+              <strong>Sort</strong>
+              <select id="historySort">
+                <option value="newest">Newest</option>
+                <option value="oldest">Oldest</option>
+                <option value="energy">Energy high to low</option>
+                <option value="cost">Cost high to low</option>
+                <option value="peak">Peak power high to low</option>
+              </select>
+            </label>
+            <button id="exportCsvBtn" class="button-secondary" type="button">Export All CSV</button>
+          </div>
+
+          <div id="historyError" class="error-message" hidden></div>
+          <div id="emptyState" class="empty-state" hidden>No completed sessions found for this account.</div>
+          <div id="historyList" class="history-list"></div>
+        </section>
+      </main>
     </div>
-  </header>
+  </div>
 
-  <main class="history-page">
-    <section class="summary-grid">
-      <div class="panel summary-card">
-        <span>Total Sessions</span>
-        <strong id="totalSessions">0</strong>
-      </div>
-      <div class="panel summary-card">
-        <span>Total Energy</span>
-        <strong id="totalEnergyKwh">0.000000 kWh</strong>
-        <small id="totalEnergyWh">0.000 Wh</small>
-      </div>
-      <div class="panel summary-card">
-        <span>Total Cost</span>
-        <strong id="totalCost">Rp 0</strong>
-      </div>
-      <div class="panel summary-card">
-        <span>Highest Peak Power</span>
-        <strong id="highestPeakPower">-</strong>
-        <small id="highestPeakPowerDevice">-</small>
-      </div>
-      <div class="panel summary-card">
-        <span>Most Energy Used</span>
-        <strong id="mostEnergyDevice">-</strong>
-        <small id="mostEnergyValue">-</small>
-      </div>
-      <div class="panel summary-card">
-        <span>Overload Sessions</span>
-        <strong id="overloadCount">0 sessions</strong>
-      </div>
-    </section>
-    <div class="insight-warnings">
-      <p id="peakWarning" class="warning-message" hidden></p>
-      <p id="overloadWarning" class="warning-message danger" hidden></p>
-    </div>
-
-    <section class="panel">
-      <div class="section-head">
-        <h3>Completed Sessions</h3>
-        <span id="historyStatus">Loading...</span>
-      </div>
-      <div id="historyError" class="error-message" hidden></div>
-      <div id="emptyState" class="empty-state" hidden>No completed sessions yet. Start monitoring a load first.</div>
-      <div id="historyList" class="history-list"></div>
-    </section>
-  </main>
-
-  <script type="module">
-    import './js/history.js';
-  </script>
+  <div id="toast" class="toast" aria-live="polite"></div>
+  <script type="module" src="js/history.js"></script>
 </body>
 </html>

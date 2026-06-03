@@ -3,6 +3,7 @@
 #include "firebase_sync.h"
 #include "network.h"
 #include "state.h"
+#include "time_sync.h"
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -77,6 +78,61 @@ static bool writeHistory(DynamicJsonDocument& doc) {
   return written > 0;
 }
 
+static bool parseOfflineDeviceNumber(const char* name, unsigned long& number) {
+  if (name == nullptr) {
+    return false;
+  }
+  if (strncmp(name, "Device ", 7) != 0) {
+    return false;
+  }
+
+  const char* digits = name + 7;
+  if (*digits == '\0') {
+    return false;
+  }
+
+  unsigned long parsed = 0;
+  while (*digits != '\0') {
+    if (*digits < '0' || *digits > '9') {
+      return false;
+    }
+    parsed = parsed * 10UL + static_cast<unsigned long>(*digits - '0');
+    digits++;
+  }
+
+  number = parsed;
+  return parsed > 0;
+}
+
+static bool isPendingHistoryEntry(JsonObjectConst entry) {
+  const char* syncStatus = entry["syncStatus"] | "";
+  if (strcmp(syncStatus, "SYNCED") == 0) {
+    return false;
+  }
+  if (strcmp(syncStatus, "PENDING") == 0) {
+    return true;
+  }
+  return entry["pendingSync"] | false;
+}
+
+static void applySyncMetadata(JsonObject entry) {
+  if (timeIsSynced()) {
+    const uint64_t syncedAt = getUnixMs();
+    char syncedAtText[24];
+    snprintf(syncedAtText, sizeof(syncedAtText), "%llu", syncedAt);
+    entry["syncedAt"] = syncedAtText;
+    const String syncedDate = getDateString();
+    entry["syncedDate"] = syncedDate;
+
+    const char* date = entry["date"] | "";
+    if (strcmp(date, "-") == 0 || date[0] == '\0') {
+      entry["displayDate"] = syncedDate;
+    }
+  } else {
+    entry["syncedAt"] = millis();
+  }
+}
+
 static SessionState parseSessionState(const char* value) {
   if (value == nullptr) return SessionState::IDLE;
   if (strcmp(value, "WAITING_LOAD") == 0) return SessionState::WAITING_LOAD;
@@ -147,6 +203,10 @@ bool storageAppendCompletedSession(const CompletedSessionSnapshot& snapshot) {
   entry["deviceId"] = Config::DEVICE_ID;
   entry["uid"] = snapshot.uid;
   entry["name"] = snapshot.deviceName;
+  entry["offlineSession"] = snapshot.offlineSession;
+  if (snapshot.offlineSession) {
+    entry["sessionTag"] = snapshot.sessionTag;
+  }
   entry["duration"] = duration;
   entry["durationSec"] = snapshot.durationSec;
   entry["power"] = snapshot.averagePower;
@@ -351,6 +411,29 @@ int storageCountHistory() {
   return doc.as<JsonArray>().size();
 }
 
+unsigned long storageNextOfflineDeviceCounterFromHistory() {
+  if (!mounted) {
+    Serial.println("[storage] Cannot scan offline device names, LittleFS is not mounted");
+    return 1UL;
+  }
+
+  DynamicJsonDocument doc(HISTORY_DOC_CAPACITY);
+  if (!loadHistory(doc)) {
+    return 1UL;
+  }
+
+  unsigned long maxDeviceNumber = 0;
+  for (JsonObjectConst entry : doc.as<JsonArrayConst>()) {
+    unsigned long number = 0;
+    const char* name = entry["name"] | entry["deviceName"] | "";
+    if (parseOfflineDeviceNumber(name, number) && number > maxDeviceNumber) {
+      maxDeviceNumber = number;
+    }
+  }
+
+  return maxDeviceNumber + 1UL;
+}
+
 bool storageClearHistory() {
   if (!mounted) {
     Serial.println("[storage] Cannot clear history, LittleFS is not mounted");
@@ -389,9 +472,9 @@ bool storageMarkSessionQueued(const char* sessionId) {
   for (JsonObject entry : history) {
     const char* entrySessionId = entry["sessionId"] | entry["id"] | "";
     if (strcmp(entrySessionId, sessionId) == 0) {
-      entry["syncStatus"] = "QUEUED";
+      entry["syncStatus"] = "SYNCED";
       entry["pendingSync"] = false;
-      entry["syncedAt"] = millis();
+      applySyncMetadata(entry);
       changed = true;
       break;
     }
@@ -404,7 +487,7 @@ bool storageMarkSessionQueued(const char* sessionId) {
   }
 
   const bool saved = writeHistory(doc);
-  Serial.print("[storage] Mark queued ");
+  Serial.print("[storage] Mark synced ");
   Serial.print(sessionId);
   Serial.print(" ");
   Serial.println(saved ? "OK" : "FAIL");
@@ -424,8 +507,7 @@ int storageCountPendingHistory() {
 
   int count = 0;
   for (JsonObjectConst entry : doc.as<JsonArrayConst>()) {
-    const char* syncStatus = entry["syncStatus"] | "PENDING";
-    if (strcmp(syncStatus, "PENDING") == 0) {
+    if (isPendingHistoryEntry(entry)) {
       count++;
     }
   }
@@ -449,8 +531,7 @@ bool storageSyncPendingHistoryToFirebase() {
   int failed = 0;
 
   for (JsonObject entry : history) {
-    const char* syncStatus = entry["syncStatus"] | "PENDING";
-    if (strcmp(syncStatus, "PENDING") == 0) {
+    if (isPendingHistoryEntry(entry)) {
       pending++;
     }
   }
@@ -463,20 +544,23 @@ bool storageSyncPendingHistoryToFirebase() {
   }
 
   for (JsonObject entry : history) {
-    const char* syncStatus = entry["syncStatus"] | "PENDING";
-    if (strcmp(syncStatus, "PENDING") != 0) {
+    if (!isPendingHistoryEntry(entry)) {
       continue;
     }
 
+    entry["syncStatus"] = "SYNCED";
+    entry["pendingSync"] = false;
+    applySyncMetadata(entry);
+
     const bool pushed = firebasePushCompletedSession(entry);
     if (pushed) {
-      entry["syncStatus"] = "QUEUED";
-      entry["pendingSync"] = false;
-      entry["syncedAt"] = millis();
       queued++;
     } else {
       entry["syncStatus"] = "PENDING";
       entry["pendingSync"] = true;
+      entry.remove("syncedAt");
+      entry.remove("syncedDate");
+      entry.remove("displayDate");
       failed++;
     }
   }

@@ -12,6 +12,7 @@ bool storageReadActiveSessionCheckpointJson(String& out);
 bool storageClearActiveSessionCheckpoint();
 bool storageReadHistoryJson(String& out);
 int storageCountHistory();
+unsigned long storageNextOfflineDeviceCounterFromHistory();
 bool storageClearHistory();
 bool storageMarkSessionQueued(const char* sessionId);
 int storageCountPendingHistory();
