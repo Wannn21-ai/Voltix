@@ -410,6 +410,15 @@ void networkUpdate() {
   if (!connected && !wasConnecting && millis() - lastReconnectAttemptMs >= WIFI_RECONNECT_INTERVAL_MS) {
     lastReconnectAttemptMs = millis();
     const bool background = isSessionBusyForNetwork();
+    if (activeWifiSsid.length() == 0) {
+      if (background) {
+        Serial.println("[network] Background reconnect skipped: no saved WiFi credentials");
+      } else {
+        Serial.println("[network] WiFi reconnect skipped: no saved WiFi credentials");
+      }
+      systemMode = SystemMode::OFFLINE;
+      return;
+    }
     if (background) {
       Serial.println("[network] Background reconnect attempt...");
     } else {

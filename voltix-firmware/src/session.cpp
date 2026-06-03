@@ -329,7 +329,6 @@ static void cancelLoadValidationNoHistory() {
   storageClearActiveSessionCheckpoint();
   resetLoadValidationState();
   startValidationResult = StartValidationResult::REJECTED_NO_LOAD;
-  Serial.println("[LoadCheck] No load detected, relay OFF");
   if (offlineModeActive) {
     offlineNoLoadPrompt = true;
     offlineFinishedAtMs = 0;
@@ -337,6 +336,8 @@ static void cancelLoadValidationNoHistory() {
     Serial.println("[offline] No load detected, relay OFF");
     Serial.println("[offline] No load detected, counter not incremented");
     Serial.println("[offline] Ready for next offline device");
+  } else {
+    Serial.println("[LoadCheck] No load detected, START rejected, relay OFF");
   }
 }
 

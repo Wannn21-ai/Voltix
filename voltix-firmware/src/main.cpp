@@ -471,7 +471,10 @@ void loop() {
   }
 
   indicatorsSetWifi(wifiConnected);
-  indicatorsSetStatus(sessionData.state == SessionState::MONITORING, sessionData.state == SessionState::OVERLOAD);
+  indicatorsSetStatus(
+    sessionData.state == SessionState::MONITORING && sensorData.loadDetected,
+    sessionData.state == SessionState::OVERLOAD
+  );
 
   if (now - lastLivePrintMs >= Config::LIVE_PRINT_INTERVAL_MS) {
     lastLivePrintMs = now;
