@@ -214,6 +214,8 @@ function renderHistory(sessions){
 function createHistoryItem(session){
   const item = document.createElement('article');
   item.className = 'history-item';
+  if(isOverloadSession(session)) item.classList.add('is-overload');
+  if(isOfflineSession(session)) item.classList.add('is-offline');
 
   const title = document.createElement('div');
   title.className = 'history-title';
@@ -238,6 +240,7 @@ function createHistoryItem(session){
   }
 
   const meta = document.createElement('span');
+  meta.className = 'history-date';
   meta.textContent = formatDateTime(sessionTimestamp(session), sessionDisplayDate(session), session.time);
 
   const actions = document.createElement('div');
@@ -254,13 +257,19 @@ function createHistoryItem(session){
   title.append(main, actions);
   item.appendChild(title);
 
-  const fields = [
+  const quickStats = document.createElement('div');
+  quickStats.className = 'history-quick-stats';
+  [
     { label: 'Duration', value: formatDuration(session.duration ?? session.durationSec ?? session.elapsedSec) },
-    { label: 'Energy kWh', value: formatEnergyKwh(sessionEnergyKwh(session), 8) },
-    { label: 'Energy Wh', value: formatEnergyWh(sessionEnergyWh(session), 6) },
+    { label: 'Energy', value: formatEnergyKwh(sessionEnergyKwh(session), 8), accent: true },
     { label: 'Cost', value: formatCost(session.cost, session.currency ?? state.config.currency ?? 'IDR', session.costText) },
+    { label: 'Peak', value: formatPower(session.peakPower ?? session.power), danger: isOverloadSession(session) }
+  ].forEach(metric=>quickStats.appendChild(createMetric(metric)));
+  item.appendChild(quickStats);
+
+  const fields = [
+    { label: 'Energy Wh', value: formatEnergyWh(sessionEnergyWh(session), 6) },
     { label: 'Average power', value: formatPower(session.averagePower ?? session.power) },
-    { label: 'Peak power', value: formatPower(session.peakPower ?? session.power) },
     { label: 'End reason', value: formatReason(session.endReason), danger: isOverloadSession(session) },
     { label: 'Mode', value: formatMode(session.startMode, session.endMode) },
     { label: 'Sync status', value: formatSyncStatus(session.syncStatus) },
@@ -286,6 +295,22 @@ function createHistoryItem(session){
   item.appendChild(grid);
 
   return item;
+}
+
+function createMetric(metric){
+  const node = document.createElement('div');
+  node.className = 'history-metric';
+  if(metric.accent) node.classList.add('is-accent');
+  if(metric.danger) node.classList.add('is-danger');
+
+  const label = document.createElement('span');
+  label.textContent = metric.label;
+
+  const value = document.createElement('strong');
+  value.textContent = metric.value;
+
+  node.append(label, value);
+  return node;
 }
 
 function createBadge(text, type){
