@@ -15,22 +15,29 @@
     <div class="main-content" id="main-content">
       <header class="topbar" id="topbar"></header>
 
-      <main class="page-content advanced-article advanced-live-page">
-        <section class="page-header">
-          <div class="page-header-row advanced-page-header">
-            <div>
-              <h1>Advanced Readings</h1>
-              <p>Technical data for engineers &amp; enthusiasts</p>
-            </div>
-            <span id="advancedLiveBadge" class="status-pill online">LIVE</span>
+      <main class="page-content advanced-page advanced-article advanced-live-page">
+        <section class="advanced-page-head" aria-labelledby="advancedPageTitle">
+          <div>
+            <span class="advanced-eyebrow">Technical mode</span>
+            <h1 id="advancedPageTitle">Advanced</h1>
+            <p>Technical reference and system behavior</p>
           </div>
+          <span id="advancedLiveBadge" class="status-pill online">LIVE</span>
         </section>
 
-        <section class="panel advanced-reference-card">
-          <div class="advanced-reference-icon" aria-hidden="true">&#9888;</div>
+        <section class="advanced-reference-card advanced-hero-card">
+          <div class="advanced-reference-icon" aria-hidden="true">V</div>
           <div>
-            <h3>Technical Reference</h3>
-            <p>Data on this page is intended for technical analysis. Power Factor and Frequency readings require an active device to be meaningful. The dashboard shows simplified data suitable for everyday use.</p>
+            <span class="advanced-eyebrow">Reference</span>
+            <h2>Voltix Technical Reference</h2>
+            <p>Per-load energy monitoring, overload protection, offline mode, and recovery behavior.</p>
+            <div class="advanced-hero-tags" aria-label="Voltix technical stack">
+              <span>ESP32</span>
+              <span>PZEM004T</span>
+              <span>Relay control</span>
+              <span>Firebase Realtime Database</span>
+              <span>LittleFS local history</span>
+            </div>
           </div>
         </section>
 
@@ -41,13 +48,13 @@
               <span id="pfStatus" class="advanced-status-dot">No Device</span>
             </div>
             <span>Power Factor</span>
-            <strong id="pfValue">&mdash;</strong>
+            <strong id="pfValue">-</strong>
             <div class="pf-scale">
-              <span>0 (Poor)</span>
+              <span>0 (Rendah)</span>
               <span>0.5</span>
               <span>1.0 (Ideal)</span>
             </div>
-            <p>Ratio of active power (W) to apparent power (VA). Closer to 1.0 = more efficient. Most home appliances: 0.7-0.95.</p>
+            <p>PF mendekati 1 berarti daya lebih efisien digunakan oleh beban.</p>
           </article>
 
           <article class="advanced-metric-card">
@@ -56,8 +63,8 @@
               <small>Standard: 50 Hz (Indonesia PLN)</small>
             </div>
             <span>Grid Frequency</span>
-            <strong id="frequencyValue">&mdash; Hz</strong>
-            <p>AC grid frequency from PLN. Normal range: 49.5-50.5 Hz. Deviation may indicate grid instability or heavy load conditions.</p>
+            <strong id="frequencyValue">- Hz</strong>
+            <p>Frekuensi PLN Indonesia normalnya berada di sekitar 50Hz.</p>
           </article>
 
           <article class="advanced-metric-card">
@@ -66,18 +73,18 @@
               <small>Formula: V &times; I</small>
             </div>
             <span>Apparent Power</span>
-            <strong id="apparentPowerValue">&mdash; VA</strong>
-            <p>Total power drawn from the grid (V &times; I). Includes both active (useful) and reactive (wasted) power. Always &ge; active power (W).</p>
+            <strong id="apparentPowerValue">- VA</strong>
+            <p>Daya semu dalam VA dihitung dari tegangan dikali arus.</p>
           </article>
 
           <article class="advanced-metric-card">
             <div class="advanced-card-head">
-              <span class="advanced-metric-icon" aria-hidden="true">&#8767;</span>
-              <small>Formula: &radic;(VA&sup2; - W&sup2;)</small>
+              <span class="advanced-metric-icon" aria-hidden="true">&#9888;</span>
+              <small>From config</small>
             </div>
-            <span>Reactive Power</span>
-            <strong id="reactivePowerValue">&mdash; VAR</strong>
-            <p>Calculated: &radic;(VA&sup2; - W&sup2;). Power that oscillates between source and load without doing useful work. Caused by inductive/capacitive loads.</p>
+            <span>Overload Threshold</span>
+            <strong id="overloadThresholdValue">- W</strong>
+            <p>Batas proteksi relay saat daya aktif mencapai atau melewati threshold.</p>
           </article>
         </section>
 
@@ -90,40 +97,132 @@
           </div>
 
           <div class="advanced-reference-grid">
-            <article class="panel advanced-formula-card">
-              <h3>Power</h3>
-              <div class="advanced-ref-row"><span>Active Power (W)</span><small>PZEM.power()</small><b id="activePowerRef">&mdash;</b></div>
-              <div class="advanced-ref-row"><span>Apparent Power (VA)</span><small>V &times; I</small><b id="apparentPowerRef">&mdash;</b></div>
-              <div class="advanced-ref-row"><span>Reactive Power (VAR)</span><small>&radic;(VA&sup2;-W&sup2;)</small><b id="reactivePowerRef">&mdash;</b></div>
-              <div class="advanced-ref-row"><span>Power Factor</span><small>W &divide; VA</small><b id="powerFactorRef">&mdash;</b></div>
+            <article class="advanced-formula-card">
+              <h3>Apparent Power</h3>
+              <div class="formula cyan">S = V &times; I</div>
+              <div class="advanced-ref-row"><span>Live value</span><small>VA</small><b id="apparentPowerRef">-</b></div>
             </article>
 
-            <article class="panel advanced-formula-card">
-              <h3>Energy &amp; Cost</h3>
-              <div class="advanced-ref-row"><span>Session Energy (Wh)</span><small>P &times; T(h)</small><b id="sessionEnergyWhRef">&mdash;</b></div>
-              <div class="advanced-ref-row"><span>Session Energy (kWh)</span><small>Wh &divide; 1000</small><b id="sessionEnergyKwhRef">&mdash;</b></div>
-              <div class="advanced-ref-row"><span>Estimated Cost</span><small>kWh &times; tariff</small><b id="sessionCostRef">&mdash;</b></div>
-              <div class="advanced-ref-row"><span>Tariff used</span><small>settings</small><b id="tariffRef">&mdash;</b></div>
+            <article class="advanced-formula-card">
+              <h3>Real Power</h3>
+              <div class="formula">P = V &times; I &times; PF</div>
+              <div class="advanced-ref-row"><span>Live value</span><small>W</small><b id="activePowerRef">-</b></div>
+            </article>
+
+            <article class="advanced-formula-card">
+              <h3>Energy</h3>
+              <div class="formula cyan">Energy(kWh) = Power(W) &times; Time(hours) / 1000</div>
+              <div class="advanced-ref-row"><span>Session Energy (Wh)</span><small>P &times; T(h)</small><b id="sessionEnergyWhRef">-</b></div>
+              <div class="advanced-ref-row"><span>Session Energy (kWh)</span><small>Wh / 1000</small><b id="sessionEnergyKwhRef">-</b></div>
+            </article>
+
+            <article class="advanced-formula-card">
+              <h3>Cost</h3>
+              <div class="formula">Cost = Energy(kWh) &times; Tariff</div>
+              <div class="advanced-ref-row"><span>Estimated Cost</span><small>kWh &times; tariff</small><b id="sessionCostRef">-</b></div>
+              <div class="advanced-ref-row"><span>Tariff used</span><small>settings</small><b id="tariffRef">-</b></div>
+            </article>
+
+            <article class="advanced-formula-card">
+              <h3>Overload</h3>
+              <div class="formula cyan">Overload if Power &gt;= Overload Threshold</div>
+              <div class="advanced-ref-row"><span>Power Factor</span><small>W / VA</small><b id="powerFactorRef">-</b></div>
+              <div class="advanced-ref-row"><span>Reactive Power</span><small>VAR</small><b id="reactivePowerRef">-</b></div>
             </article>
           </div>
         </section>
 
+        <section class="advanced-section">
+          <div class="section-head">
+            <div>
+              <h3>Penjelasan Metrik</h3>
+              <p>Ringkasan teknis untuk demo dan pembacaan sistem.</p>
+            </div>
+          </div>
+
+          <div class="advanced-explain-grid">
+            <article class="advanced-info-card">
+              <h3>Power Factor</h3>
+              <p>PF mendekati 1 adalah kondisi ideal. PF rendah berarti sebagian daya tidak digunakan secara efisien oleh beban.</p>
+            </article>
+            <article class="advanced-info-card">
+              <h3>Frequency</h3>
+              <p>Standar frekuensi jaringan listrik Indonesia adalah 50Hz. Nilai yang jauh berubah bisa menandakan kondisi grid tidak stabil.</p>
+            </article>
+            <article class="advanced-info-card">
+              <h3>Apparent Power</h3>
+              <p>Apparent power adalah daya semu dalam VA, dihitung dari voltage dikali current.</p>
+            </article>
+            <article class="advanced-info-card">
+              <h3>Overload Warning</h3>
+              <p>Warning aktif sebelum daya mencapai overload threshold, berdasarkan warning percent pada konfigurasi.</p>
+            </article>
+            <article class="advanced-info-card">
+              <h3>Offline Monitoring</h3>
+              <p>Voltix dapat tetap monitoring lokal tanpa internet. Data sesi disimpan lebih dulu ke LittleFS.</p>
+            </article>
+            <article class="advanced-info-card">
+              <h3>Pending Sync</h3>
+              <p>Sesi offline disimpan lokal dan dikirim ke Firebase saat koneksi internet kembali tersedia.</p>
+            </article>
+            <article class="advanced-info-card">
+              <h3>Power-loss Recovery</h3>
+              <p>Checkpoint sesi aktif dipakai untuk resume atau finalize setelah restart atau listrik terputus.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="advanced-section">
+          <div class="section-head">
+            <div>
+              <h3>Offline Mode Flow</h3>
+              <p>Alur singkat ketika Voltix masuk mode offline dan menyimpan sesi lokal.</p>
+            </div>
+          </div>
+
+          <div class="advanced-flow-card">
+            <div><span>1</span><p>Masuk offline dari auto no internet timeout, BOOT 10s, atau tombol captive portal "Lanjutkan Mode Offline".</p></div>
+            <div><span>2</span><p>Relay ON otomatis untuk percobaan offline pertama.</p></div>
+            <div><span>3</span><p>Jika tidak ada load sampai timeout, relay OFF dan sesi tidak masuk history.</p></div>
+            <div><span>4</span><p>BOOT 1s memulai device offline berikutnya.</p></div>
+            <div><span>5</span><p>Sesi offline yang selesai akan sync ke Firebase saat internet kembali.</p></div>
+          </div>
+        </section>
+
+        <section class="advanced-section">
+          <div class="section-head">
+            <div>
+              <h3>State Machine</h3>
+              <p>Status utama yang dipakai Voltix saat validasi dan monitoring beban.</p>
+            </div>
+          </div>
+
+          <div class="advanced-state-grid">
+            <article><h3>IDLE</h3><p>Relay off, menunggu perintah atau mode offline.</p></article>
+            <article><h3>WAITING_LOAD / VALIDATING_LOAD</h3><p>Relay on, sistem memvalidasi apakah load benar-benar terpasang.</p></article>
+            <article><h3>MONITORING</h3><p>Sesi aktif, energi dan biaya dihitung selama beban berjalan.</p></article>
+            <article><h3>OVERLOAD</h3><p>Daya melewati threshold dan sistem memutus relay untuk proteksi.</p></article>
+            <article><h3>FINISHED</h3><p>Sesi selesai, snapshot akhir disimpan sebelum sync.</p></article>
+            <article><h3>OFFLINE</h3><p>Monitoring lokal menggunakan LittleFS sampai koneksi kembali.</p></article>
+          </div>
+        </section>
+
         <section class="advanced-chart-grid">
-          <article class="panel chart-panel chart-card">
+          <article class="chart-panel chart-card">
             <h3>Power Factor over time</h3>
             <div class="chart-wrap"><canvas id="pfChart"></canvas></div>
           </article>
-          <article class="panel chart-panel chart-card">
+          <article class="chart-panel chart-card">
             <h3>Frequency over time</h3>
             <div class="chart-wrap"><canvas id="frequencyChart"></canvas></div>
           </article>
-          <article class="panel chart-panel chart-card full-width">
+          <article class="chart-panel chart-card full-width">
             <h3>Active/Apparent/Reactive Power over time</h3>
             <div class="chart-wrap"><canvas id="powerAdvancedChart"></canvas></div>
           </article>
         </section>
 
-        <section class="panel advanced-log-panel">
+        <section class="advanced-log-panel">
           <div class="section-head advanced-log-head">
             <div>
               <h3>Live Log</h3>

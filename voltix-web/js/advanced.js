@@ -14,7 +14,7 @@ import {
 
 const MAX_SAMPLES = 60;
 const MAX_LOG_ROWS = 100;
-const EMPTY = '—';
+const ADV_EMPTY = '-';
 
 const els = {};
 const state = {
@@ -45,7 +45,7 @@ async function init(){
 function bindEls(){
   [
     'advancedLiveBadge','pfStatus','pfValue','frequencyValue','apparentPowerValue',
-    'reactivePowerValue','activePowerRef','apparentPowerRef','reactivePowerRef',
+    'reactivePowerValue','overloadThresholdValue','activePowerRef','apparentPowerRef','reactivePowerRef',
     'powerFactorRef','sessionEnergyWhRef','sessionEnergyKwhRef','sessionCostRef',
     'tariffRef','pfChart','frequencyChart','powerAdvancedChart','advancedLogBody',
     'clearLogBtn','exportLogBtn'
@@ -60,7 +60,7 @@ function bindActions(){
 function listenConfig(){
   onValue(ref(db, `/devices/${DEVICE_ID}/config`), snap=>{
     state.config = snap.val() || {};
-    renderTariff();
+    renderConfigRefs();
   }, error=>{
     console.error('[advanced] config read failed', error);
   });
@@ -140,7 +140,7 @@ function renderLive(sample){
     els.advancedLiveBadge.className = 'status-pill online';
   }
 
-  setText('pfValue', sample.loadDetected ? formatDecimal(sample.powerFactor, 2) : EMPTY);
+  setText('pfValue', formatDecimal(sample.powerFactor, 2));
   setText('frequencyValue', `${formatDecimal(sample.frequency, 2)} Hz`);
   setText('apparentPowerValue', `${formatDecimal(sample.apparentPower, 1)} VA`);
   setText('reactivePowerValue', `${formatDecimal(sample.reactivePower, 1)} VAR`);
@@ -151,16 +151,19 @@ function renderLive(sample){
   setText('powerFactorRef', formatDecimal(sample.powerFactor, 2));
   setText('sessionEnergyWhRef', formatUnit(sample.energyWh, 6, 'Wh'));
   setText('sessionEnergyKwhRef', formatUnit(sample.energyKwh, 8, 'kWh'));
-  setText('sessionCostRef', formatCost(sample.cost, state.config.currency ?? 'IDR', null, EMPTY));
-  renderTariff();
+  setText('sessionCostRef', formatCost(sample.cost, state.config.currency ?? 'IDR', null, ADV_EMPTY));
+  renderConfigRefs();
   renderPowerFactorStatus(sample);
 }
 
-function renderTariff(){
+function renderConfigRefs(){
   const tariff = numberValue(state.config.tariff);
   setText('tariffRef', tariff === null
-    ? EMPTY
-    : formatCost(tariff, state.config.currency ?? 'IDR', null, EMPTY));
+    ? ADV_EMPTY
+    : formatCost(tariff, state.config.currency ?? 'IDR', null, ADV_EMPTY));
+
+  const overloadThreshold = numberValue(state.config.overloadThreshold);
+  setText('overloadThresholdValue', formatUnit(overloadThreshold, 1, 'W'));
 }
 
 function renderPowerFactorStatus(sample){
@@ -168,20 +171,18 @@ function renderPowerFactorStatus(sample){
 
   let label = 'No Device';
   let className = 'advanced-status-dot no-device';
-  if(sample.loadDetected){
-    if(sample.powerFactor === null){
-      label = 'Waiting';
-      className = 'advanced-status-dot';
-    }else if(sample.powerFactor >= 0.9){
-      label = 'Ideal';
-      className = 'advanced-status-dot good';
-    }else if(sample.powerFactor >= 0.7){
-      label = 'Normal';
-      className = 'advanced-status-dot ok';
-    }else{
-      label = 'Poor';
-      className = 'advanced-status-dot warning';
-    }
+  if(sample.powerFactor === null && hasTelemetry(sample)){
+    label = 'Waiting';
+    className = 'advanced-status-dot';
+  }else if(sample.powerFactor !== null && sample.powerFactor >= 0.9){
+    label = 'Ideal';
+    className = 'advanced-status-dot good';
+  }else if(sample.powerFactor !== null && sample.powerFactor >= 0.7){
+    label = 'Normal';
+    className = 'advanced-status-dot ok';
+  }else if(sample.powerFactor !== null){
+    label = 'Low PF';
+    className = 'advanced-status-dot warning';
   }
 
   els.pfStatus.textContent = label;
@@ -327,12 +328,12 @@ function exportAdvancedLogCsv(){
 
 function formatDecimal(value, decimals){
   const number = numberValue(value);
-  return number === null ? EMPTY : number.toFixed(decimals);
+  return number === null ? ADV_EMPTY : number.toFixed(decimals);
 }
 
 function formatUnit(value, decimals, unit){
   const number = numberValue(value);
-  return number === null ? EMPTY : `${number.toFixed(decimals)} ${unit}`;
+  return number === null ? ADV_EMPTY : `${number.toFixed(decimals)} ${unit}`;
 }
 
 function setText(id, value){
