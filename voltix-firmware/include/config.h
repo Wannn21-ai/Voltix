@@ -15,7 +15,8 @@ static constexpr const char* FIREBASE_COMPLETED_SESSION_PATH_FORMAT = "/devices/
 static constexpr int RELAY_PIN = 27;
 static constexpr int PZEM_RX_PIN = 16;
 static constexpr int PZEM_TX_PIN = 17;
-static constexpr int BUTTON_PIN = 0;
+// External DS-134 momentary button on GPIO32 to GND, active LOW.
+static constexpr int BUTTON_PIN = 32;
 static constexpr int WIFI_LED_PIN = 2;
 static constexpr int GREEN_LED_PIN = 25;
 static constexpr int RED_LED_PIN = 26;
