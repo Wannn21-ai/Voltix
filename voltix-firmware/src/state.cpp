@@ -90,9 +90,9 @@ const char* endReasonToString(EndReason reason) {
 
 const char* offlineEntryReasonToString(OfflineEntryReason reason) {
   switch (reason) {
-    case OfflineEntryReason::AUTO_NO_INTERNET: return "AUTO_NO_INTERNET";
-    case OfflineEntryReason::BOOT_10S: return "BOOT_10S";
-    case OfflineEntryReason::CAPTIVE_PORTAL: return "CAPTIVE_PORTAL";
+    case OfflineEntryReason::AUTO_NO_WIFI: return "AUTO_NO_WIFI";
+    case OfflineEntryReason::MANUAL_BOOT_10S: return "BOOT_10S";
+    case OfflineEntryReason::MANUAL_CAPTIVE_PORTAL: return "CAPTIVE_PORTAL";
   }
   return "UNKNOWN";
 }

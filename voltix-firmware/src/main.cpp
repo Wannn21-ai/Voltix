@@ -29,6 +29,7 @@ static char serialCommandBuffer[32];
 static size_t serialCommandLength = 0;
 static bool serialCommandOverflow = false;
 static bool wasWifiConnected = false;
+static bool wasOnlineServicesAllowed = false;
 static bool wasRecoveryActive = false;
 
 static void printLiveData() {
@@ -386,14 +387,16 @@ void loop() {
   sessionRecoveryUpdate();
 
   const bool recoveryActive = sessionRecoveryIsActive();
-  if (wasRecoveryActive && !recoveryActive && networkIsConnected()) {
+  if (wasRecoveryActive && !recoveryActive && networkIsConnected() && !offlineModeBlocksAutoOnline()) {
     firebasePublishLive();
     storageSyncPendingHistoryToFirebase();
   }
   wasRecoveryActive = recoveryActive;
 
   const bool wifiConnected = networkIsConnected();
-  if (wifiConnected && !wasWifiConnected) {
+  const bool onlineServicesAllowed = wifiConnected && !offlineModeBlocksAutoOnline();
+  if (onlineServicesAllowed && !wasOnlineServicesAllowed) {
+    offlineModeHandleOnlineRestored();
     systemMode = SystemMode::ONLINE;
     timeSyncBegin();
     firebaseReadConfig();
@@ -413,6 +416,7 @@ void loop() {
     systemMode = SystemMode::OFFLINE;
   }
   wasWifiConnected = wifiConnected;
+  wasOnlineServicesAllowed = onlineServicesAllowed;
 
   if (!wifiConnected &&
       !sessionIsActive() &&
@@ -424,7 +428,7 @@ void loop() {
     const unsigned long timeoutSec = appConfig.offlineTimeoutSec > 0 ? appConfig.offlineTimeoutSec : 300UL;
     if (now - offlineNoNetworkSinceMs >= timeoutSec * 1000UL) {
       offlineNoNetworkSinceMs = 0;
-      offlineModeEnter(OfflineEntryReason::AUTO_NO_INTERNET);
+      offlineModeEnter(OfflineEntryReason::AUTO_NO_WIFI);
     }
   } else {
     offlineNoNetworkSinceMs = 0;
@@ -452,7 +456,7 @@ void loop() {
 
   offlineModeUpdate();
 
-  if (wifiConnected) {
+  if (onlineServicesAllowed) {
     if (lastFirebaseConfigMs == 0 || now - lastFirebaseConfigMs >= 30000UL) {
       lastFirebaseConfigMs = now;
       firebaseReadConfig();

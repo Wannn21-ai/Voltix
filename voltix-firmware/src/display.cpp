@@ -80,7 +80,7 @@ void renderIdle() {
 void renderWaitingLoad() {
   if (offlineModeIsActive()) {
     startScreen();
-    drawLine(0, "Offline Mode");
+    drawLine(0, offlineModeIsManualLocked() ? "Offline Manual" : "Offline Auto");
     drawLine(1, "Relay: ON");
     drawLine(2, "Waiting Load");
     finishScreen();
@@ -107,9 +107,22 @@ void renderOfflineNoLoad() {
 
 void renderOfflineReady() {
   startScreen();
-  drawLine(0, "Offline Mode");
-  drawLine(1, "Relay OFF");
-  drawLine(2, "BOOT 1s Next");
+  if (offlineModeIsManualLocked()) {
+    drawLine(0, "Offline Manual");
+    drawLine(1, "Relay OFF");
+    drawLine(2, "BOOT 1s Next");
+  } else {
+    drawLine(0, "Offline Auto");
+    drawLine(1, "Reconnecting...");
+    drawLine(2, "BOOT 1s Next");
+  }
+  finishScreen();
+}
+
+void renderTryingOnline() {
+  startScreen();
+  drawLine(0, "Trying Online");
+  drawLine(1, "WiFi reconnect...");
   finishScreen();
 }
 
@@ -193,6 +206,11 @@ void renderScreen() {
 
   if (sessionRecoveryIsActive()) {
     renderRecovery();
+    return;
+  }
+
+  if (offlineModeShowTryingOnline()) {
+    renderTryingOnline();
     return;
   }
 

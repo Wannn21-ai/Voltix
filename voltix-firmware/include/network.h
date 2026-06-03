@@ -8,6 +8,7 @@ void networkMarkBootComplete();
 bool networkIsConnected();
 bool networkIsPortalActive();
 void networkStopPortalForOffline();
+bool networkReconnectSavedWiFiFromManualOffline();
 bool loadSavedWiFiCredentials(String& ssid, String& pass);
 void saveWiFiCredentials(const String& ssid, const String& password);
 void clearWiFiCredentials();

@@ -23,6 +23,7 @@ constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = 15000UL;
 constexpr unsigned long WIFI_RECONNECT_INTERVAL_MS = 10000UL;
 constexpr unsigned long RESTART_DELAY_MS = 1200UL;
 constexpr unsigned long BOOT_NEXT_ATTEMPT_MS = 1000UL;
+constexpr unsigned long BOOT_EXIT_MANUAL_MS = 3000UL;
 constexpr unsigned long BOOT_CLEAR_WIFI_MS = 5000UL;
 constexpr unsigned long BOOT_ENTER_OFFLINE_MS = 10000UL;
 constexpr byte DNS_PORT = 53;
@@ -286,11 +287,13 @@ void updateBootButton() {
     if (bootButtonPressedAtMs > 0 && bootButtonArmed) {
       const unsigned long heldMs = millis() - bootButtonPressedAtMs;
       if (heldMs >= BOOT_ENTER_OFFLINE_MS) {
-        offlineModeEnter(OfflineEntryReason::BOOT_10S);
+        offlineModeEnter(OfflineEntryReason::MANUAL_BOOT_10S);
       } else if (heldMs >= BOOT_CLEAR_WIFI_MS) {
         Serial.println("[network] BOOT 5s release detected, clearing WiFi");
         clearWiFiCredentials();
         scheduleRestart();
+      } else if (heldMs >= BOOT_EXIT_MANUAL_MS) {
+        offlineModeExitManualLockAndTryOnline();
       } else if (heldMs >= BOOT_NEXT_ATTEMPT_MS) {
         if (offlineModeCanStartNextAttempt()) {
           offlineModeStartNextAttempt(false);
@@ -344,7 +347,7 @@ void networkUpdate() {
     portalServer.handleClient();
     if (portalOfflinePending && millis() >= portalOfflineAtMs) {
       portalOfflinePending = false;
-      offlineModeEnter(OfflineEntryReason::CAPTIVE_PORTAL);
+      offlineModeEnter(OfflineEntryReason::MANUAL_CAPTIVE_PORTAL);
       return;
     }
     systemMode = SystemMode::SETUP;
@@ -354,10 +357,15 @@ void networkUpdate() {
   const bool connected = networkIsConnected();
   if (connected != wasConnected) {
     wasConnected = connected;
-    systemMode = connected ? SystemMode::ONLINE : SystemMode::OFFLINE;
+    const bool autoOnlineBlocked = connected && offlineModeBlocksAutoOnline();
+    systemMode = connected && !autoOnlineBlocked ? SystemMode::ONLINE : SystemMode::OFFLINE;
     if (connected) {
       initialNetworkSetup = false;
-      if (sessionData.state == SessionState::MONITORING || sessionData.state == SessionState::WAITING_LOAD) {
+      if (autoOnlineBlocked) {
+        if (sessionData.state == SessionState::MONITORING) {
+          Serial.println("[network] Manual offline lock prevents auto online during monitoring");
+        }
+      } else if (sessionData.state == SessionState::MONITORING || sessionData.state == SessionState::WAITING_LOAD) {
         Serial.println("[network] WiFi reconnected, continuing active session");
       } else if (activeWifiSource == WifiSource::SAVED) {
         Serial.println("[network] Saved WiFi connected");
@@ -366,10 +374,12 @@ void networkUpdate() {
       } else {
         Serial.println("[network] WiFi reconnected");
       }
-      Serial.print("[network] IP=");
-      Serial.println(WiFi.localIP());
-      if (sessionData.state == SessionState::MONITORING) {
-        Serial.println("[session] Continuing active session after reconnect");
+      if (!autoOnlineBlocked) {
+        Serial.print("[network] IP=");
+        Serial.println(WiFi.localIP());
+        if (sessionData.state == SessionState::MONITORING) {
+          Serial.println("[session] Continuing active session after reconnect");
+        }
       }
     } else {
       if (isSessionBusyForNetwork()) {
@@ -462,6 +472,23 @@ void networkStopPortalForOffline() {
   initialNetworkSetup = false;
   lastReconnectAttemptMs = millis();
   systemMode = SystemMode::OFFLINE;
+}
+
+bool networkReconnectSavedWiFiFromManualOffline() {
+  Serial.println("[network] Manual offline unlocked, reconnecting saved WiFi");
+
+  if (networkIsConnected()) {
+    return true;
+  }
+
+  if (savedWifiSsid.length() == 0 && !loadSavedWiFiCredentials(savedWifiSsid, savedWifiPassword)) {
+    Serial.println("[network] WiFi reconnect skipped: no saved WiFi credentials");
+    systemMode = SystemMode::OFFLINE;
+    return false;
+  }
+
+  startWiFiConnection(savedWifiSsid, savedWifiPassword, WifiSource::SAVED, true);
+  return true;
 }
 
 void networkMarkBootComplete() {

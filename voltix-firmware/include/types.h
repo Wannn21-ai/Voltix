@@ -28,9 +28,9 @@ enum class EndReason {
 };
 
 enum class OfflineEntryReason {
-  AUTO_NO_INTERNET,
-  BOOT_10S,
-  CAPTIVE_PORTAL
+  AUTO_NO_WIFI,
+  MANUAL_BOOT_10S,
+  MANUAL_CAPTIVE_PORTAL
 };
 
 const char* systemModeToString(SystemMode mode);

@@ -15,6 +15,8 @@
 namespace {
 constexpr unsigned long RECOVERY_SETTLE_MS = 1200UL;
 constexpr unsigned long OFFLINE_FINISHED_SUMMARY_MS = 2500UL;
+constexpr unsigned long MANUAL_OFFLINE_IDLE_TIMEOUT_MS = 90000UL;
+constexpr unsigned long TRYING_ONLINE_DISPLAY_MS = 5000UL;
 constexpr const char* PREF_NAMESPACE = "voltix";
 constexpr const char* PREF_OFFLINE_DEVICE_COUNTER = "offline_device_counter";
 constexpr const char* PREF_OFFLINE_DEVICE_COUNTER_NVS = "off_dev_count";
@@ -43,8 +45,13 @@ bool recoveryAttemptedThisBoot = false;
 bool offlineModeActive = false;
 bool offlineNoLoadPrompt = false;
 bool offlineReadyForNext = false;
+bool offlineManualLock = false;
+bool manualOfflineTryingOnline = false;
 bool offlineReadyLogged = false;
+OfflineEntryReason offlineReason = OfflineEntryReason::AUTO_NO_WIFI;
 unsigned long offlineFinishedAtMs = 0;
+unsigned long manualOfflineIdleStartedAtMs = 0;
+unsigned long manualOfflineTryingOnlineAtMs = 0;
 unsigned long offlineDeviceCounter = 1UL;
 }
 
@@ -319,6 +326,8 @@ static void verifyLoadAndStartMonitoring() {
   if (offlineModeActive) {
     offlineNoLoadPrompt = false;
     offlineReadyForNext = false;
+    manualOfflineIdleStartedAtMs = 0;
+    manualOfflineTryingOnline = false;
     offlineReadyLogged = false;
     Serial.println("[offline] Load detected, offline monitoring started");
   }
@@ -347,6 +356,7 @@ static void cancelLoadValidationNoHistory() {
     offlineNoLoadPrompt = true;
     offlineReadyForNext = true;
     offlineFinishedAtMs = 0;
+    manualOfflineTryingOnline = false;
     offlineReadyLogged = true;
     Serial.println("[offline] No load detected, relay OFF");
     Serial.println("[offline] No load detected, counter not incremented");
@@ -529,9 +539,14 @@ void sessionStop(EndReason reason) {
     offlineNoLoadPrompt = false;
     offlineReadyForNext = true;
     offlineFinishedAtMs = millis();
+    manualOfflineTryingOnline = false;
     offlineReadyLogged = false;
     Serial.println("[offline] Session finished, ready for next device");
     Serial.println("[display] Finished summary shown non-blocking");
+    if (offlineManualLock) {
+      manualOfflineIdleStartedAtMs = millis();
+      Serial.println("[offline] Manual offline idle timer started");
+    }
     if (reason == EndReason::LOAD_REMOVED && saved) {
       Serial.println("[offline] Load removed, session saved locally");
     }
@@ -706,6 +721,11 @@ bool offlineModeStartNextAttempt(bool firstAttempt) {
   systemMode = SystemMode::OFFLINE;
   offlineNoLoadPrompt = false;
   offlineReadyForNext = false;
+  if (offlineManualLock && manualOfflineIdleStartedAtMs > 0) {
+    manualOfflineIdleStartedAtMs = 0;
+    Serial.println("[offline] BOOT 1s next device, manual offline timer reset");
+  }
+  manualOfflineTryingOnline = false;
   offlineFinishedAtMs = 0;
   offlineReadyLogged = false;
   if (sessionData.state == SessionState::FINISHED) {
@@ -729,17 +749,42 @@ bool offlineModeStartNextAttempt(bool firstAttempt) {
 
 bool offlineModeEnter(OfflineEntryReason reason) {
   offlineModeActive = true;
+  offlineReason = reason;
+  offlineManualLock = reason == OfflineEntryReason::MANUAL_BOOT_10S ||
+                      reason == OfflineEntryReason::MANUAL_CAPTIVE_PORTAL;
   offlineNoLoadPrompt = false;
   offlineReadyForNext = false;
+  manualOfflineIdleStartedAtMs = 0;
+  manualOfflineTryingOnline = false;
+  manualOfflineTryingOnlineAtMs = 0;
   offlineFinishedAtMs = 0;
   offlineReadyLogged = false;
   systemMode = SystemMode::OFFLINE;
   networkStopPortalForOffline();
 
-  Serial.print("[offline] Enter offline mode reason=");
-  Serial.println(offlineEntryReasonToString(reason));
+  if (offlineManualLock) {
+    Serial.print("[offline] Enter MANUAL offline reason=");
+    Serial.println(offlineEntryReasonToString(reason));
+    Serial.println("[offline] Manual offline lock enabled");
+  } else {
+    Serial.println("[offline] Enter AUTO offline reason=AUTO_NO_WIFI");
+  }
 
   offlineModeStartNextAttempt(true);
+  return true;
+}
+
+bool offlineModeExitManualLockAndTryOnline() {
+  if (!offlineModeActive || !offlineManualLock) {
+    return false;
+  }
+
+  offlineManualLock = false;
+  manualOfflineIdleStartedAtMs = 0;
+  manualOfflineTryingOnline = true;
+  manualOfflineTryingOnlineAtMs = millis();
+  Serial.println("[offline] BOOT 3s exit manual offline, trying online");
+  networkReconnectSavedWiFiFromManualOffline();
   return true;
 }
 
@@ -748,13 +793,32 @@ void offlineModeUpdate() {
     return;
   }
 
-  systemMode = networkIsConnected() ? SystemMode::ONLINE : SystemMode::OFFLINE;
+  if (!offlineManualLock && networkIsConnected()) {
+    systemMode = SystemMode::ONLINE;
+  } else {
+    systemMode = SystemMode::OFFLINE;
+  }
+
+  const unsigned long now = millis();
 
   if (sessionData.state == SessionState::FINISHED &&
       offlineFinishedAtMs > 0 &&
-      millis() - offlineFinishedAtMs >= OFFLINE_FINISHED_SUMMARY_MS) {
+      now - offlineFinishedAtMs >= OFFLINE_FINISHED_SUMMARY_MS) {
     sessionData.state = SessionState::IDLE;
     offlineFinishedAtMs = 0;
+  }
+
+  if (offlineManualLock &&
+      manualOfflineIdleStartedAtMs > 0 &&
+      !sessionIsActive() &&
+      !relayIsOn() &&
+      now - manualOfflineIdleStartedAtMs >= MANUAL_OFFLINE_IDLE_TIMEOUT_MS) {
+    offlineManualLock = false;
+    manualOfflineIdleStartedAtMs = 0;
+    manualOfflineTryingOnline = true;
+    manualOfflineTryingOnlineAtMs = now;
+    Serial.println("[offline] Manual offline idle timeout, trying online");
+    networkReconnectSavedWiFiFromManualOffline();
   }
 
   if (!sessionIsActive() &&
@@ -772,6 +836,19 @@ bool offlineModeIsActive() {
   return offlineModeActive;
 }
 
+bool offlineModeIsManualLocked() {
+  return offlineModeActive && offlineManualLock;
+}
+
+bool offlineModeBlocksAutoOnline() {
+  return offlineModeIsManualLocked();
+}
+
+bool offlineModeShowTryingOnline() {
+  return manualOfflineTryingOnline &&
+         millis() - manualOfflineTryingOnlineAtMs < TRYING_ONLINE_DISPLAY_MS;
+}
+
 bool offlineModeShowNoLoadPrompt() {
   return offlineModeActive && offlineNoLoadPrompt;
 }
@@ -780,4 +857,25 @@ bool offlineModeShowFinishedSummary() {
   return offlineModeActive &&
          sessionData.state == SessionState::FINISHED &&
          offlineFinishedAtMs > 0;
+}
+
+void offlineModeHandleOnlineRestored() {
+  if (!offlineModeActive || offlineManualLock) {
+    return;
+  }
+
+  const bool restoredFromManual = offlineReason != OfflineEntryReason::AUTO_NO_WIFI ||
+                                  manualOfflineTryingOnline;
+  offlineModeActive = false;
+  offlineNoLoadPrompt = false;
+  offlineReadyForNext = false;
+  manualOfflineTryingOnline = false;
+  manualOfflineIdleStartedAtMs = 0;
+  offlineFinishedAtMs = 0;
+  offlineReadyLogged = false;
+  systemMode = SystemMode::ONLINE;
+
+  if (restoredFromManual) {
+    Serial.println("[network] Online restored from manual offline");
+  }
 }
