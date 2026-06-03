@@ -1,5 +1,6 @@
 #pragma once
 
+void indicatorsForceSafeEarly();
 void indicatorsBegin();
 void indicatorsUpdate();
 void indicatorsBeep(unsigned int durationMs);

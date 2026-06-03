@@ -3,6 +3,7 @@
 #include "firebase_sync.h"
 #include "network.h"
 #include "state.h"
+#include "time_sync.h"
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -112,6 +113,24 @@ static bool isPendingHistoryEntry(JsonObjectConst entry) {
     return true;
   }
   return entry["pendingSync"] | false;
+}
+
+static void applySyncMetadata(JsonObject entry) {
+  if (timeIsSynced()) {
+    const uint64_t syncedAt = getUnixMs();
+    char syncedAtText[24];
+    snprintf(syncedAtText, sizeof(syncedAtText), "%llu", syncedAt);
+    entry["syncedAt"] = syncedAtText;
+    const String syncedDate = getDateString();
+    entry["syncedDate"] = syncedDate;
+
+    const char* date = entry["date"] | "";
+    if (strcmp(date, "-") == 0 || date[0] == '\0') {
+      entry["displayDate"] = syncedDate;
+    }
+  } else {
+    entry["syncedAt"] = millis();
+  }
 }
 
 static SessionState parseSessionState(const char* value) {
@@ -455,7 +474,7 @@ bool storageMarkSessionQueued(const char* sessionId) {
     if (strcmp(entrySessionId, sessionId) == 0) {
       entry["syncStatus"] = "SYNCED";
       entry["pendingSync"] = false;
-      entry["syncedAt"] = millis();
+      applySyncMetadata(entry);
       changed = true;
       break;
     }
@@ -531,7 +550,7 @@ bool storageSyncPendingHistoryToFirebase() {
 
     entry["syncStatus"] = "SYNCED";
     entry["pendingSync"] = false;
-    entry["syncedAt"] = millis();
+    applySyncMetadata(entry);
 
     const bool pushed = firebasePushCompletedSession(entry);
     if (pushed) {
@@ -540,6 +559,8 @@ bool storageSyncPendingHistoryToFirebase() {
       entry["syncStatus"] = "PENDING";
       entry["pendingSync"] = true;
       entry.remove("syncedAt");
+      entry.remove("syncedDate");
+      entry.remove("displayDate");
       failed++;
     }
   }

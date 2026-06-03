@@ -518,12 +518,17 @@ function waitForAck(cmd){
 
 function handleCommandAck(ack){
   if(!state.pendingCommand?.id || ack.id !== state.pendingCommand.id) return;
-  const message = ack.message ? `: ${ack.message}` : '';
   const status = String(ack.status ?? 'DONE').toUpperCase();
+  const reason = String(ack.reason ?? '').toUpperCase();
+  const noLoadRejected = status === 'REJECTED' && reason === 'NO_LOAD';
+  const userMessage = noLoadRejected
+    ? 'Beban belum terdeteksi. Colokkan beban dulu, lalu Start Monitoring.'
+    : ack.message;
+  const message = userMessage ? `: ${userMessage}` : '';
   const tone = status === 'REJECTED' ? 'warning' : status === 'ERROR' ? 'error' : 'success';
   setCommandStatus(`${ack.type ?? state.pendingCommand.type} ${status}${message}`, tone);
   if(status === 'REJECTED'){
-    showToast(ack.message || 'Command rejected');
+    showToast(userMessage || 'Command rejected');
   }
   clearPendingCommand();
 }

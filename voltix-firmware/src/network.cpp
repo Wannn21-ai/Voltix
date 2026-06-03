@@ -57,6 +57,8 @@ static const IPAddress setupIp(192, 168, 4, 1);
 static const IPAddress setupGateway(192, 168, 4, 1);
 static const IPAddress setupSubnet(255, 255, 255, 0);
 
+void startWiFiConnection(const String& ssid, const String& password, WifiSource source, bool background);
+
 String htmlEscape(const String& value) {
   String escaped = value;
   escaped.replace("&", "&amp;");
@@ -90,7 +92,7 @@ bool canStartCaptivePortal(const char* reason) {
   Serial.println(relayIsOn() ? "on" : "off");
 
   if (isSessionBusyForNetwork()) {
-    Serial.print("[portal] Captive portal suppressed: active session, reason=");
+    Serial.print("[portal] Captive portal suppressed: active session reason=");
     Serial.println(reason == nullptr ? "unknown" : reason);
     return false;
   }
@@ -200,6 +202,7 @@ void startSetupPortal(const char* reason) {
     return;
   }
 
+  Serial.println("[portal] Starting setup portal...");
   WiFi.disconnect(false, false);
   WiFi.mode(WIFI_AP);
   WiFi.softAPConfig(setupIp, setupGateway, setupSubnet);
@@ -228,6 +231,25 @@ void startSetupPortal(const char* reason) {
   Serial.print(SETUP_AP_SSID);
   Serial.print(" IP=");
   Serial.println(WiFi.softAPIP());
+  Serial.println("[portal] WebServer ready");
+}
+
+void stopSetupPortalForActiveSession() {
+  dnsServer.stop();
+  portalServer.stop();
+  portalActive = false;
+  portalOfflinePending = false;
+  initialNetworkSetup = false;
+  wasConnecting = false;
+  systemMode = SystemMode::OFFLINE;
+  Serial.println("[portal] Captive portal suppressed: active session reason=portal already active");
+
+  if (savedWifiSsid.length() > 0) {
+    startWiFiConnection(savedWifiSsid, savedWifiPassword, WifiSource::SAVED, true);
+  } else {
+    WiFi.mode(WIFI_STA);
+    lastReconnectAttemptMs = millis();
+  }
 }
 
 void startWiFiConnection(const String& ssid, const String& password, WifiSource source, bool background) {
@@ -242,7 +264,7 @@ void startWiFiConnection(const String& ssid, const String& password, WifiSource 
   wasConnecting = true;
 
   if (background) {
-    Serial.println("[network] Background reconnect attempt to saved WiFi...");
+    Serial.println("[network] Background reconnect attempt...");
   } else if (source == WifiSource::SAVED) {
     Serial.println("[network] Trying saved WiFi...");
   } else if (source == WifiSource::FALLBACK) {
@@ -302,12 +324,7 @@ void networkBegin() {
     return;
   }
 
-  if (!isSessionBusyForNetwork() && credentialsFallbackAvailable()) {
-    startWiFiConnection(String(WIFI_SSID), String(WIFI_PASSWORD), WifiSource::FALLBACK, false);
-    return;
-  }
-
-  Serial.println("[network] WiFi failed, starting setup portal");
+  Serial.println("[network] No saved WiFi, starting setup portal");
   startSetupPortal("boot no WiFi credentials");
 }
 
@@ -319,6 +336,10 @@ void networkUpdate() {
   }
 
   if (portalActive) {
+    if (isSessionBusyForNetwork()) {
+      stopSetupPortalForActiveSession();
+      return;
+    }
     dnsServer.processNextRequest();
     portalServer.handleClient();
     if (portalOfflinePending && millis() >= portalOfflineAtMs) {
@@ -370,10 +391,6 @@ void networkUpdate() {
 
     if (activeWifiSource == WifiSource::SAVED) {
       Serial.println("[network] Saved WiFi failed");
-      if (initialNetworkSetup && credentialsFallbackAvailable()) {
-        startWiFiConnection(String(WIFI_SSID), String(WIFI_PASSWORD), WifiSource::FALLBACK, false);
-        return;
-      }
     } else if (activeWifiSource == WifiSource::FALLBACK) {
       Serial.println("[network] Fallback WiFi failed");
     }
@@ -394,7 +411,7 @@ void networkUpdate() {
     lastReconnectAttemptMs = millis();
     const bool background = isSessionBusyForNetwork();
     if (background) {
-      Serial.println("[network] Background reconnect attempt to saved WiFi...");
+      Serial.println("[network] Background reconnect attempt...");
     } else {
       Serial.println("[network] Reconnecting WiFi...");
     }

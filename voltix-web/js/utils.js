@@ -347,13 +347,14 @@ export function sessionEnergyWh(session){
 }
 
 export function sessionTimestamp(session){
-  return numberValue(
-    session?.endUnixMs ??
-    session?.timestamp ??
-    session?.startUnixMs ??
-    session?.createdAt ??
-    session?.copiedAt
-  );
+  const primary = numberValue(session?.endUnixMs ?? session?.timestamp ?? session?.startUnixMs);
+  if(primary !== null && primary >= MIN_UNIX_MS) return primary;
+
+  const syncedAt = numberValue(session?.syncedAt);
+  if(syncedAt !== null && syncedAt >= MIN_UNIX_MS) return syncedAt;
+
+  if(primary !== null) return primary;
+  return numberValue(session?.createdAt ?? session?.copiedAt);
 }
 
 export function isOverloadSession(session){

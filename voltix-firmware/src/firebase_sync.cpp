@@ -125,8 +125,7 @@ static String completedSessionPath(const char* sessionId) {
 }
 
 static bool isSessionActiveForLive() {
-  return sessionData.state == SessionState::WAITING_LOAD ||
-         sessionData.state == SessionState::MONITORING ||
+  return sessionData.state == SessionState::MONITORING ||
          sessionData.state == SessionState::OVERLOAD;
 }
 
@@ -158,6 +157,7 @@ static bool publishPendingStartAckIfReady() {
       "No load detected. Connect a device before starting monitoring.",
       "NO_LOAD"
     );
+    Serial.println("[firebase] START ack rejected reason=NO_LOAD");
   }
 
   firebaseAckCommand();

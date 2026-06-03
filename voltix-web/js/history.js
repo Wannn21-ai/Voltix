@@ -238,7 +238,7 @@ function createHistoryItem(session){
   }
 
   const meta = document.createElement('span');
-  meta.textContent = formatDateTime(sessionTimestamp(session), session.date, session.time);
+  meta.textContent = formatDateTime(sessionTimestamp(session), sessionDisplayDate(session), session.time);
 
   const actions = document.createElement('div');
   actions.className = 'history-actions';
@@ -304,7 +304,7 @@ function exportCsv(){
     rows.push([
       session.sessionId,
       session.deviceName ?? session.name,
-      formatDateTime(sessionTimestamp(session), session.date, session.time),
+      formatDateTime(sessionTimestamp(session), sessionDisplayDate(session), session.time),
       formatDuration(session.durationSec ?? session.elapsedSec, session.duration),
       sessionEnergyKwh(session),
       sessionEnergyWh(session),
@@ -374,6 +374,12 @@ function clearError(){
 
 function formatReason(reason){
   return safeText(reason).replaceAll('_', ' ');
+}
+
+function sessionDisplayDate(session){
+  const rawDate = String(session?.date ?? '').trim();
+  if(rawDate && rawDate !== '-') return rawDate;
+  return session?.displayDate ?? session?.syncedDate ?? session?.date;
 }
 
 function formatMode(startMode, endMode){

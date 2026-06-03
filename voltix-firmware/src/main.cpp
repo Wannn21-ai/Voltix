@@ -347,6 +347,8 @@ static void handleSerialCommands() {
 
 void setup() {
   Serial.begin(115200);
+  relayForceOffEarly();
+  indicatorsForceSafeEarly();
   delay(Config::BOOT_DELAY_MS);
   Serial.println();
   Serial.println("=== Voltix firmware boot ===");
@@ -363,7 +365,7 @@ void setup() {
   networkBegin();
   firebaseBegin();
 
-  if (sessionRecoveryIsActive()) {
+  if (sessionRecoveryIsActive() || networkIsPortalActive()) {
     displayShowStatus();
   } else {
     displayShowBoot();
@@ -469,7 +471,7 @@ void loop() {
   }
 
   indicatorsSetWifi(wifiConnected);
-  indicatorsSetStatus(sessionIsActive(), sessionData.state == SessionState::OVERLOAD);
+  indicatorsSetStatus(sessionData.state == SessionState::MONITORING, sessionData.state == SessionState::OVERLOAD);
 
   if (now - lastLivePrintMs >= Config::LIVE_PRINT_INTERVAL_MS) {
     lastLivePrintMs = now;

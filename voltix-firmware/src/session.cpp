@@ -258,12 +258,14 @@ static void finalizeRecoveredNoLoad() {
     } else {
       Serial.println("[recovery] WiFi offline, recovered session saved as pending sync");
     }
+  } else {
+    storageClearActiveSessionCheckpoint();
   }
 
   sessionData.state = SessionState::FINISHED;
   recoveryState = saved ? RecoveryState::FINALIZED : RecoveryState::FAILED;
   strlcpy(recoveryStatusText, saved ? "finalized_no_load" : "finalize_failed", sizeof(recoveryStatusText));
-  Serial.println("[recovery] no load found, session finalized");
+  Serial.println("[recovery] No load found, recovery finalized once");
 }
 
 static bool isLoadAboveStartThreshold() {
@@ -300,7 +302,7 @@ static void verifyLoadAndStartMonitoring() {
   sessionData.pendingSync = false;
   resetLoadValidationState();
   startValidationResult = StartValidationResult::VERIFIED;
-  Serial.println("[LoadCheck] Load verified");
+  Serial.println("[LoadCheck] Load verified, monitoring started");
   if (offlineModeActive) {
     offlineNoLoadPrompt = false;
     offlineReadyLogged = false;
@@ -327,7 +329,7 @@ static void cancelLoadValidationNoHistory() {
   storageClearActiveSessionCheckpoint();
   resetLoadValidationState();
   startValidationResult = StartValidationResult::REJECTED_NO_LOAD;
-  Serial.println("[LoadCheck] Cancelled: no load detected");
+  Serial.println("[LoadCheck] No load detected, relay OFF");
   if (offlineModeActive) {
     offlineNoLoadPrompt = true;
     offlineFinishedAtMs = 0;
@@ -421,7 +423,8 @@ bool sessionStart(const char* deviceName) {
   startValidationResult = StartValidationResult::NONE;
 
   relaySet(true);
-  Serial.println("[LoadCheck] Started");
+  Serial.println("[LoadCheck] START requested, validating load");
+  Serial.println("[LoadCheck] Relay ON for validation");
   Serial.print("[session] Validating load for device ");
   Serial.println(sessionData.deviceName);
   return true;
