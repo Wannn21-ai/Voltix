@@ -2556,3 +2556,278 @@ body:has(.dashboard-page) .command-buttons {
     min-height: 230px;
   }
 }
+
+/* ===== SMART ENERGY MONITOR THEME ENFORCEMENT ===== */
+.page-content,
+.dashboard-page,
+.history-page,
+.settings-page,
+.advanced-page {
+  background: transparent;
+}
+
+.panel,
+.summary-card,
+.history-item,
+.settings-card,
+.gauge-card,
+.dashboard-power-card,
+.stat-card,
+.advanced-reading-card,
+.advanced-reference-card,
+.advanced-metric-card,
+.advanced-formula-card,
+.advanced-info-card,
+.advanced-flow-card,
+.advanced-state-grid article,
+.chart-card,
+.chart-panel,
+.advanced-log-panel,
+.modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.16);
+}
+
+.panel:hover,
+.summary-card:hover,
+.history-item:hover,
+.settings-card:hover,
+.gauge-card:hover,
+.dashboard-power-card:hover,
+.stat-card:hover,
+.advanced-reading-card:hover,
+.advanced-reference-card:hover,
+.advanced-metric-card:hover,
+.advanced-formula-card:hover,
+.advanced-info-card:hover,
+.chart-card:hover {
+  border-color: var(--border-accent);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.2);
+}
+
+.page-header-row,
+.history-head-status,
+.history-control-panel,
+.advanced-page-head,
+.settings-page-head,
+.advanced-section,
+.history-main-section,
+.dashboard-page .flat-section,
+.advanced-page .advanced-section,
+.advanced-page .advanced-chart-grid,
+.advanced-page .advanced-log-panel {
+  background: transparent;
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+.topbar {
+  min-height: var(--topbar-h);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar-title,
+.page-title,
+.page-header h1,
+.history-page-head h1,
+.settings-page-head h1,
+.advanced-page-head h1,
+.brand,
+.panel h3,
+.chart-card h3,
+.chart-panel h3,
+.section-head h3,
+.settings-card h3,
+.history-main-section .section-head h3,
+.advanced-page .advanced-formula-card h3,
+.advanced-info-card h3,
+.advanced-state-grid h3 {
+  font-family: var(--font-display);
+}
+
+.section-head p,
+.page-header p,
+.history-page-head p,
+.settings-page-head p,
+.advanced-page-head p,
+.advanced-info-card p,
+.advanced-flow-card p,
+.advanced-state-grid p {
+  color: var(--text-secondary);
+}
+
+.button-link:hover,
+.filter-tab:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-accent);
+}
+
+.filter-tab.active,
+.history-page .filter-tab.active {
+  color: var(--cyan);
+  background: var(--cyan-dim);
+  border-color: rgba(0,229,255,0.2);
+  box-shadow: inset 0 -2px 0 var(--cyan);
+}
+
+.gauge {
+  --gauge-color: var(--amber);
+  --gauge-glow: rgba(255,171,0,0.16);
+  background:
+    radial-gradient(circle, var(--bg-surface) 0 57%, transparent 58%),
+    conic-gradient(var(--gauge-color) var(--gauge-value), rgba(255,255,255,0.08) 0);
+  box-shadow: 0 0 18px var(--gauge-glow);
+}
+
+.voltage-gauge {
+  --gauge-color: var(--amber);
+  --gauge-glow: rgba(255,171,0,0.16);
+}
+
+.current-gauge {
+  --gauge-color: var(--cyan);
+  --gauge-glow: rgba(0,229,255,0.16);
+}
+
+.dashboard-power-card {
+  border-color: rgba(255,171,0,0.26);
+}
+
+.dashboard-power-card > strong,
+.stat-card.is-electric strong,
+.summary-card.is-electric strong,
+.advanced-hero h3 {
+  color: var(--cyan);
+  text-shadow: none;
+}
+
+.power-warning {
+  border-color: rgba(255,171,0,0.32);
+}
+
+.dashboard-page .power-warning .badge,
+.notice.warning,
+.warning-message,
+.badge.warning {
+  color: var(--amber);
+  background: var(--amber-dim);
+  border-color: rgba(255,171,0,0.28);
+}
+
+.power-danger {
+  border-color: rgba(255,23,68,0.36);
+}
+
+.dashboard-page .power-danger .badge,
+.notice.danger,
+.warning-message.danger,
+.error-message,
+.overload-badge {
+  color: var(--red);
+  background: var(--red-dim);
+  border-color: rgba(255,23,68,0.32);
+}
+
+.notice.success,
+.badge.success {
+  color: var(--green);
+  background: var(--green-dim);
+  border-color: rgba(0,230,118,0.28);
+}
+
+.command-status.success,
+.status-message.success {
+  color: var(--green);
+}
+
+.command-status.warning,
+.advanced-status-dot.warning {
+  color: var(--amber);
+}
+
+.command-status.error,
+.history-field b.overload-text {
+  color: var(--red);
+}
+
+.advanced-status-dot.good {
+  color: var(--green);
+}
+
+.advanced-status-dot.ok,
+.advanced-ref-row b,
+.formula.cyan,
+.history-head-status strong,
+.history-metric.is-accent strong,
+.history-title-main strong {
+  color: var(--cyan);
+}
+
+.advanced-status-dot.no-device {
+  color: var(--red);
+}
+
+.advanced-reference-card,
+.advanced-hero-card {
+  border-color: rgba(0,229,255,0.2);
+}
+
+.advanced-reference-icon,
+.advanced-flow-card span,
+.fab {
+  color: #0a0a0a;
+  background: linear-gradient(135deg, var(--cyan), var(--green));
+  box-shadow: 0 0 18px var(--cyan-glow);
+}
+
+.formula {
+  color: var(--amber);
+  background: var(--amber-dim);
+  border-color: rgba(255,171,0,0.3);
+}
+
+.chart-wrap {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+}
+
+.chart-wrap canvas {
+  color: var(--chart-tick);
+}
+
+pre,
+.advanced-log-table-wrap {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+
+.advanced-log-table th {
+  color: var(--cyan);
+  background: var(--cyan-dim);
+}
+
+.advanced-log-table td {
+  color: var(--text-secondary);
+}
+
+input,
+select,
+.history-page .history-toolbar input,
+.history-page .history-toolbar select,
+.settings-page .settings-card input,
+.settings-page .settings-card select {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+input:focus,
+select:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 3px var(--cyan-dim);
+}
