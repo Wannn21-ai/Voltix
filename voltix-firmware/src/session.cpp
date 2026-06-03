@@ -14,7 +14,7 @@
 
 namespace {
 constexpr unsigned long RECOVERY_SETTLE_MS = 1200UL;
-constexpr unsigned long OFFLINE_FINISHED_SUMMARY_MS = 4000UL;
+constexpr unsigned long OFFLINE_FINISHED_SUMMARY_MS = 2500UL;
 constexpr const char* PREF_NAMESPACE = "voltix";
 constexpr const char* PREF_OFFLINE_DEVICE_COUNTER = "offline_device_counter";
 constexpr const char* PREF_OFFLINE_DEVICE_COUNTER_NVS = "off_dev_count";
@@ -42,6 +42,7 @@ char recoveryStatusText[48] = "idle";
 bool recoveryAttemptedThisBoot = false;
 bool offlineModeActive = false;
 bool offlineNoLoadPrompt = false;
+bool offlineReadyForNext = false;
 bool offlineReadyLogged = false;
 unsigned long offlineFinishedAtMs = 0;
 unsigned long offlineDeviceCounter = 1UL;
@@ -317,6 +318,7 @@ static void verifyLoadAndStartMonitoring() {
   Serial.println("[LoadCheck] Load verified, monitoring started");
   if (offlineModeActive) {
     offlineNoLoadPrompt = false;
+    offlineReadyForNext = false;
     offlineReadyLogged = false;
     Serial.println("[offline] Load detected, offline monitoring started");
   }
@@ -343,6 +345,7 @@ static void cancelLoadValidationNoHistory() {
   startValidationResult = StartValidationResult::REJECTED_NO_LOAD;
   if (offlineModeActive) {
     offlineNoLoadPrompt = true;
+    offlineReadyForNext = true;
     offlineFinishedAtMs = 0;
     offlineReadyLogged = true;
     Serial.println("[offline] No load detected, relay OFF");
@@ -524,8 +527,11 @@ void sessionStop(EndReason reason) {
   resumeMillis = 0;
   if (offlineModeActive) {
     offlineNoLoadPrompt = false;
+    offlineReadyForNext = true;
     offlineFinishedAtMs = millis();
     offlineReadyLogged = false;
+    Serial.println("[offline] Session finished, ready for next device");
+    Serial.println("[display] Finished summary shown non-blocking");
     if (reason == EndReason::LOAD_REMOVED && saved) {
       Serial.println("[offline] Load removed, session saved locally");
     }
@@ -682,7 +688,8 @@ bool sessionClearCheckpoint() {
 bool offlineModeCanStartNextAttempt() {
   return offlineModeActive &&
          !relayIsOn() &&
-         !sessionIsActive();
+         !sessionIsActive() &&
+         (offlineReadyForNext || offlineNoLoadPrompt || sessionData.state == SessionState::IDLE || sessionData.state == SessionState::FINISHED);
 }
 
 bool offlineModeStartNextAttempt(bool firstAttempt) {
@@ -690,13 +697,24 @@ bool offlineModeStartNextAttempt(bool firstAttempt) {
     return false;
   }
 
+  const bool summaryWasVisible = offlineModeShowFinishedSummary();
+  if (summaryWasVisible) {
+    Serial.println("[button] BOOT 1s accepted during finished summary");
+    Serial.println("[display] Finished summary skipped by next device request");
+  }
+
   systemMode = SystemMode::OFFLINE;
   offlineNoLoadPrompt = false;
+  offlineReadyForNext = false;
   offlineFinishedAtMs = 0;
   offlineReadyLogged = false;
+  if (sessionData.state == SessionState::FINISHED) {
+    sessionData.state = SessionState::IDLE;
+  }
 
   const bool started = sessionStart("");
   if (!started) {
+    offlineReadyForNext = true;
     return false;
   }
 
@@ -705,12 +723,14 @@ bool offlineModeStartNextAttempt(bool firstAttempt) {
   } else {
     Serial.println("[offline] BOOT 1s next device validation");
   }
+  Serial.println("[offline] Next offline validation started");
   return true;
 }
 
 bool offlineModeEnter(OfflineEntryReason reason) {
   offlineModeActive = true;
   offlineNoLoadPrompt = false;
+  offlineReadyForNext = false;
   offlineFinishedAtMs = 0;
   offlineReadyLogged = false;
   systemMode = SystemMode::OFFLINE;
@@ -740,6 +760,7 @@ void offlineModeUpdate() {
   if (!sessionIsActive() &&
       !relayIsOn() &&
       !offlineNoLoadPrompt &&
+      offlineReadyForNext &&
       offlineFinishedAtMs == 0 &&
       !offlineReadyLogged) {
     offlineReadyLogged = true;
