@@ -39,6 +39,7 @@ unsigned int loadValidationStableSamples = 0;
 bool loadValidationWaitingLogged = false;
 StartValidationResult startValidationResult = StartValidationResult::NONE;
 char recoveryStatusText[48] = "idle";
+bool recoveryAttemptedThisBoot = false;
 bool offlineModeActive = false;
 bool offlineNoLoadPrompt = false;
 bool offlineReadyLogged = false;
@@ -124,7 +125,7 @@ static void assignOfflineDeviceNameIfNeeded() {
   Serial.println(sessionData.deviceName);
   offlineDeviceCounter++;
   if (!saveOfflineDeviceCounter(offlineDeviceCounter)) {
-    offlineDeviceCounter = loadOfflineDeviceCounter();
+    Serial.println("[offline] Counter kept in RAM; history scan will repair after reboot");
   }
 }
 
@@ -155,9 +156,19 @@ static CompletedSessionSnapshot makeFinalSnapshot(EndReason reason) {
   snapshot.endReason = reason;
   snapshot.startMode = sessionData.startMode;
   snapshot.endMode = systemMode;
-  strlcpy(snapshot.date, getDateString().c_str(), sizeof(snapshot.date));
-  strlcpy(snapshot.time, getTimeString().c_str(), sizeof(snapshot.time));
-  snapshot.timestamp = getUnixMs();
+  const bool syncedTime = timeIsSynced();
+  if (syncedTime) {
+    strlcpy(snapshot.date, getDateString().c_str(), sizeof(snapshot.date));
+    strlcpy(snapshot.time, getTimeString().c_str(), sizeof(snapshot.time));
+    snapshot.timestamp = getUnixMs();
+  } else {
+    strlcpy(snapshot.date, "-", sizeof(snapshot.date));
+    strlcpy(snapshot.time, "-", sizeof(snapshot.time));
+    snapshot.timestamp = static_cast<uint64_t>(millis());
+    if (snapshot.offlineSession) {
+      Serial.println("[time] Offline session has no NTP date, using fallback date=-");
+    }
+  }
   snapshot.recovered = false;
   snapshot.recoverySource = nullptr;
   return snapshot;
@@ -248,7 +259,6 @@ static void finalizeRecoveredNoLoad() {
   sessionData.pendingSync = saved;
 
   if (saved) {
-    storageClearActiveSessionCheckpoint();
     if (networkIsConnected()) {
       queued = firebasePushCompletedSession(snapshot);
       if (queued) {
@@ -258,8 +268,10 @@ static void finalizeRecoveredNoLoad() {
     } else {
       Serial.println("[recovery] WiFi offline, recovered session saved as pending sync");
     }
-  } else {
-    storageClearActiveSessionCheckpoint();
+  }
+
+  if (storageClearActiveSessionCheckpoint()) {
+    Serial.println("[recovery] Active checkpoint cleared");
   }
 
   sessionData.state = SessionState::FINISHED;
@@ -595,7 +607,15 @@ void sessionRecoveryBegin() {
     return;
   }
 
+  if (recoveryAttemptedThisBoot) {
+    relaySet(false);
+    Serial.println("[recovery] Recovery validation already attempted, not retrying");
+    return;
+  }
+
   Serial.println("[recovery] active session checkpoint found");
+  Serial.println("[recovery] Starting one-time validation");
+  recoveryAttemptedThisBoot = true;
   recoveryState = RecoveryState::SETTLING;
   strlcpy(recoveryStatusText, "checking_session", sizeof(recoveryStatusText));
   recoveryStartedAtMs = millis();

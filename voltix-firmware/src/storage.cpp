@@ -122,12 +122,19 @@ static void applySyncMetadata(JsonObject entry) {
     snprintf(syncedAtText, sizeof(syncedAtText), "%llu", syncedAt);
     entry["syncedAt"] = syncedAtText;
     const String syncedDate = getDateString();
+    const String syncedTime = getTimeString();
     entry["syncedDate"] = syncedDate;
+    entry["syncedTime"] = syncedTime;
 
     const char* date = entry["date"] | "";
     if (strcmp(date, "-") == 0 || date[0] == '\0') {
+      entry["date"] = "-";
       entry["displayDate"] = syncedDate;
     }
+
+    const char* sessionId = entry["sessionId"] | entry["id"] | "";
+    Serial.print("[time] Added syncedDate for pending session ");
+    Serial.println(sessionId[0] == '\0' ? "(unknown)" : sessionId);
   } else {
     entry["syncedAt"] = millis();
   }
@@ -431,6 +438,8 @@ unsigned long storageNextOfflineDeviceCounterFromHistory() {
     }
   }
 
+  Serial.print("[offline] Scanned history max offline device=");
+  Serial.println(maxDeviceNumber);
   return maxDeviceNumber + 1UL;
 }
 
@@ -560,6 +569,7 @@ bool storageSyncPendingHistoryToFirebase() {
       entry["pendingSync"] = true;
       entry.remove("syncedAt");
       entry.remove("syncedDate");
+      entry.remove("syncedTime");
       entry.remove("displayDate");
       failed++;
     }

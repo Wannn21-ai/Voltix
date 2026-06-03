@@ -398,8 +398,12 @@ void loop() {
     timeSyncBegin();
     firebaseReadConfig();
     firebasePublishLive();
-    Serial.println("[main] WiFi connected, syncing pending local history");
-    storageSyncPendingHistoryToFirebase();
+    if (timeIsSynced()) {
+      Serial.println("[main] WiFi connected, syncing pending local history");
+      storageSyncPendingHistoryToFirebase();
+    } else {
+      Serial.println("[time] NTP not ready, pending history sync deferred");
+    }
     lastFirebaseConfigMs = now;
     lastFirebaseLiveMs = now;
     lastPendingHistorySyncMs = now;
