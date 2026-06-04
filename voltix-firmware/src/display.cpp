@@ -1,6 +1,7 @@
 #include "display.h"
 #include "config.h"
 #include "network.h"
+#include "relay.h"
 #include "session.h"
 #include "state.h"
 
@@ -17,12 +18,24 @@ constexpr uint8_t OLED_ADDRESS = 0x3C;
 constexpr unsigned long DISPLAY_INTERVAL_MS = 500UL;
 constexpr unsigned long BUTTON_DISPLAY_INTERVAL_MS = 200UL;
 constexpr unsigned long BUTTON_FEEDBACK_MS = 1200UL;
+constexpr unsigned long ROTATION_STATUS_MS = 5000UL;
+constexpr unsigned long ROTATION_BRANDING_MS = 3000UL;
 constexpr size_t MAX_LINE_CHARS = 21;
 constexpr size_t BUTTON_LABEL_CHARS = 22;
+
+enum class RotationContext {
+  NONE,
+  IDLE,
+  SETUP,
+  OFFLINE_READY,
+  OFFLINE_NO_LOAD
+};
 
 Adafruit_SSD1306 oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 bool oledReady = false;
 unsigned long lastDisplayMs = 0;
+unsigned long rotationStartedAtMs = 0;
+RotationContext rotationContext = RotationContext::NONE;
 bool buttonHoldVisible = false;
 unsigned long buttonHoldDurationMs = 0;
 unsigned long lastButtonHoldDisplayMs = 0;
@@ -35,6 +48,20 @@ char buttonFeedbackMessage[BUTTON_LABEL_CHARS] = "";
 void drawLine(uint8_t line, const char* text) {
   oled.setCursor(0, line * 10);
   oled.print(text);
+}
+
+void drawCenteredText(const char* text, int16_t y, uint8_t textSize) {
+  int16_t x1;
+  int16_t y1;
+  uint16_t width;
+  uint16_t height;
+  const char* safeText = text != nullptr ? text : "";
+
+  oled.setTextSize(textSize);
+  oled.getTextBounds(safeText, 0, y, &x1, &y1, &width, &height);
+  const int16_t x = (SCREEN_WIDTH - static_cast<int16_t>(width)) / 2 - x1;
+  oled.setCursor(x < 0 ? 0 : x, y);
+  oled.print(safeText);
 }
 
 void trimText(const char* input, char* output, size_t outputSize) {
@@ -93,6 +120,39 @@ bool screenAllowsButtonOverlay() {
   return !sessionRecoveryIsActive() && sessionData.state != SessionState::OVERLOAD;
 }
 
+void resetRotation() {
+  rotationContext = RotationContext::NONE;
+  rotationStartedAtMs = 0;
+}
+
+bool shouldShowBranding(RotationContext context) {
+  const unsigned long now = millis();
+  if (rotationContext != context) {
+    rotationContext = context;
+    rotationStartedAtMs = now;
+    return false;
+  }
+
+  const unsigned long cycleMs = ROTATION_STATUS_MS + ROTATION_BRANDING_MS;
+  const unsigned long elapsedMs = (now - rotationStartedAtMs) % cycleMs;
+  return elapsedMs >= ROTATION_STATUS_MS;
+}
+
+bool brandingBaseAllowed() {
+  return !sessionIsActive() &&
+         !relayIsOn() &&
+         !sensorData.loadDetected &&
+         !sessionRecoveryIsActive() &&
+         sessionData.state != SessionState::OVERLOAD &&
+         sessionData.state != SessionState::MONITORING &&
+         sessionData.state != SessionState::WAITING_LOAD &&
+         sessionData.state != SessionState::FINISHING;
+}
+
+bool idleBrandingAllowed() {
+  return sessionData.state == SessionState::IDLE && brandingBaseAllowed();
+}
+
 void formatProgressBar(uint8_t percent, char* output, size_t outputSize) {
   const uint8_t safePercent = percent > 100 ? 100 : percent;
   const uint8_t filled = (safePercent * 10U + 50U) / 100U;
@@ -129,6 +189,13 @@ void renderButtonHold() {
 void renderButtonFeedback() {
   startScreen();
   drawLine(1, buttonFeedbackMessage);
+  finishScreen();
+}
+
+void renderBranding() {
+  startScreen();
+  drawCenteredText("VOLTIX", 18, 2);
+  drawCenteredText("Energy Anywhere", 42, 1);
   finishScreen();
 }
 
@@ -267,22 +334,26 @@ void renderScreen() {
   }
 
   if (sessionRecoveryIsActive()) {
+    resetRotation();
     renderRecovery();
     return;
   }
 
   if (sessionData.state == SessionState::OVERLOAD) {
+    resetRotation();
     renderOverload();
     return;
   }
 
   if (buttonHoldVisible && screenAllowsButtonOverlay()) {
+    resetRotation();
     renderButtonHold();
     return;
   }
 
   if (buttonFeedbackVisible) {
     if (millis() < buttonFeedbackUntilMs && screenAllowsButtonOverlay()) {
+      resetRotation();
       renderButtonFeedback();
       return;
     }
@@ -290,55 +361,96 @@ void renderScreen() {
   }
 
   if (offlineModeShowTryingOnline()) {
+    resetRotation();
     renderTryingOnline();
     return;
   }
 
   if (sessionData.state == SessionState::MONITORING) {
+    resetRotation();
     renderMonitoring();
     return;
   }
 
   if (sessionData.state == SessionState::WAITING_LOAD) {
+    resetRotation();
     renderWaitingLoad();
     return;
   }
 
-  if (offlineModeShowNoLoadPrompt()) {
-    renderOfflineNoLoad();
-    return;
-  }
-
-  if (offlineModeIsActive() &&
-      !offlineModeShowFinishedSummary() &&
-      !sessionIsActive()) {
-    renderOfflineReady();
+  if (offlineModeShowFinishedSummary()) {
+    resetRotation();
+    renderFinished();
     return;
   }
 
   if (networkIsPortalActive()) {
-    renderSetupPortal();
+    if (brandingBaseAllowed() && shouldShowBranding(RotationContext::SETUP)) {
+      renderBranding();
+    } else {
+      if (!brandingBaseAllowed()) {
+        resetRotation();
+      }
+      renderSetupPortal();
+    }
+    return;
+  }
+
+  if (offlineModeShowNoLoadPrompt()) {
+    if (brandingBaseAllowed() && shouldShowBranding(RotationContext::OFFLINE_NO_LOAD)) {
+      renderBranding();
+    } else {
+      if (!brandingBaseAllowed()) {
+        resetRotation();
+      }
+      renderOfflineNoLoad();
+    }
+    return;
+  }
+
+  if (offlineModeIsActive() &&
+      !sessionIsActive()) {
+    if (brandingBaseAllowed() && shouldShowBranding(RotationContext::OFFLINE_READY)) {
+      renderBranding();
+    } else {
+      if (!brandingBaseAllowed()) {
+        resetRotation();
+      }
+      renderOfflineReady();
+    }
     return;
   }
 
   switch (sessionData.state) {
     case SessionState::IDLE:
-      renderIdle();
+      if (idleBrandingAllowed() && shouldShowBranding(RotationContext::IDLE)) {
+        renderBranding();
+      } else {
+        if (!idleBrandingAllowed()) {
+          resetRotation();
+        }
+        renderIdle();
+      }
       break;
     case SessionState::WAITING_LOAD:
+      resetRotation();
       renderWaitingLoad();
       break;
     case SessionState::MONITORING:
+      resetRotation();
       renderMonitoring();
       break;
     case SessionState::OVERLOAD:
+      resetRotation();
       renderOverload();
       break;
     case SessionState::FINISHING:
     case SessionState::FINISHED:
+      resetRotation();
       renderFinished();
       break;
     default:
+      resetRotation();
       renderIdle();
       break;
   }
