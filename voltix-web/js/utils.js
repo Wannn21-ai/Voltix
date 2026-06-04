@@ -159,7 +159,7 @@ function topbarSubtitle(activePage){
     return '<p class="page-kicker">Real-time load monitoring for device <span id="deviceId">esp32-voltix-001</span></p>';
   }
   if(activePage === 'history'){
-    return '<p class="page-kicker">Completed sessions copied from the device queue into your account.</p>';
+    return '<p class="page-kicker">Completed sessions from the device queue and your account.</p>';
   }
   if(activePage === 'settings'){
     return '<p class="page-kicker">Device configuration and personal dashboard preferences.</p>';

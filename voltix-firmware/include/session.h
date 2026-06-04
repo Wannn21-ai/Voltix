@@ -34,4 +34,4 @@ bool offlineModeShowTryingOnline();
 bool offlineModeCanStartNextAttempt();
 bool offlineModeShowNoLoadPrompt();
 bool offlineModeShowFinishedSummary();
-void offlineModeHandleOnlineRestored();
+bool offlineModeHandleOnlineRestored();

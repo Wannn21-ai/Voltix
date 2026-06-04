@@ -615,6 +615,14 @@ void networkStopPortalForOffline() {
 bool networkReconnectSavedWiFiFromManualOffline() {
   Serial.println("[network] Manual offline unlocked, reconnecting saved WiFi");
 
+  if (portalActive) {
+    dnsServer.stop();
+    portalServer.stop();
+    portalActive = false;
+    portalOfflinePending = false;
+    Serial.println("[portal] Captive portal stopped for manual offline unlock");
+  }
+
   if (networkIsConnected()) {
     return true;
   }

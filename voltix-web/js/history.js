@@ -34,6 +34,7 @@ const state = {
   sessions: [],
   visibleSessions: []
 };
+const USER_HISTORY_EXTRA_FIELDS = new Set(['ownerUid', 'copiedAt', 'sourcePath', 'userLabel', 'note']);
 
 async function init(){
   state.user = await requireAuth();
@@ -86,20 +87,38 @@ async function loadHistory(){
 
   try{
     const configRef = ref(db, `/devices/${DEVICE_ID}/config`);
-    await importCompletedSessionsToUserHistory(state.user.uid);
+    const completedPath = `/devices/${DEVICE_ID}/completedSessions`;
+    const userHistoryPath = `/users/${state.user.uid}/history`;
 
-    const [historySnap, configSnap] = await Promise.all([
-      get(ref(db, `/users/${state.user.uid}/history`)),
+    const [completedSnap, historySnap, configSnap] = await Promise.all([
+      get(ref(db, completedPath)),
+      get(ref(db, userHistoryPath)),
       get(configRef).catch(error=>{
         console.warn('[history] config unavailable for insight warnings', error);
         return null;
       })
     ]);
 
+    const completedSessions = completedSnap.val() || {};
+    const userHistory = historySnap.val() || {};
+    const deviceCount = Object.keys(completedSessions).length;
+    const userCount = Object.keys(userHistory).length;
+    const mergedSessions = mergeHistoryMaps(completedSessions, userHistory);
+    const deviceOnlyCount = mergedSessions.filter(session=>session.sourceDeviceOnly === true).length;
+
+    console.log(`[history] device completedSessions count=${deviceCount}`);
+    console.log(`[history] user history count=${userCount}`);
+    console.log(`[history] merged history count=${mergedSessions.length}`);
+    console.log(`[history] device-only sessions displayed=${deviceOnlyCount}`);
+
     state.config = configSnap?.val() || {};
-    state.sessions = normalizeSessionMap(historySnap.val());
+    state.sessions = mergedSessions;
     renderSummary(state.sessions);
     renderFilteredHistory();
+
+    mirrorCompletedSessionsToUserHistory(state.user.uid, completedSessions, userHistory).catch(error=>{
+      console.warn('[history] optional completedSessions mirror failed', error);
+    });
   }catch(error){
     console.error('[history] failed to load sessions', error);
     showError(`Failed to load history: ${error.message}`);
@@ -111,16 +130,56 @@ async function loadHistory(){
   }
 }
 
-async function importCompletedSessionsToUserHistory(uid){
+function mergeHistoryMaps(deviceSessions, userHistory){
+  const merged = new Map();
+  const normalizedDevice = normalizeSessionMap(deviceSessions);
+  const normalizedUser = normalizeSessionMap(userHistory);
+
+  normalizedDevice.forEach(session=>{
+    const sessionId = session?.sessionId ?? session?.id;
+    if(!sessionId) return;
+    merged.set(sessionId, {
+      ...session,
+      sessionId,
+      sourceDeviceOnly: true,
+      sourcePaths: {
+        device: `/devices/${DEVICE_ID}/completedSessions/${sessionId}`
+      }
+    });
+  });
+
+  normalizedUser.forEach(session=>{
+    const sessionId = session?.sessionId ?? session?.id;
+    if(!sessionId) return;
+    const existing = merged.get(sessionId);
+    const combined = existing ? mergeUserExtras(existing, session) : { ...session };
+    merged.set(sessionId, {
+      ...combined,
+      sessionId,
+      sourceDeviceOnly: false,
+      sourcePaths: {
+        ...(existing?.sourcePaths ?? {}),
+        user: `/users/${state.user.uid}/history/${sessionId}`
+      }
+    });
+  });
+
+  return [...merged.values()].sort(sorter('newest'));
+}
+
+function mergeUserExtras(baseSession, userSession){
+  const merged = { ...baseSession };
+  Object.entries(userSession ?? {}).forEach(([key, value])=>{
+    if(USER_HISTORY_EXTRA_FIELDS.has(key) || merged[key] === undefined || merged[key] === null || merged[key] === ''){
+      merged[key] = value;
+    }
+  });
+  return merged;
+}
+
+async function mirrorCompletedSessionsToUserHistory(uid, completedSessions, existingHistory){
   const completedPath = `/devices/${DEVICE_ID}/completedSessions`;
   const userHistoryPath = `/users/${uid}/history`;
-  const [completedSnap, userHistorySnap] = await Promise.all([
-    get(ref(db, completedPath)),
-    get(ref(db, userHistoryPath))
-  ]);
-
-  const completedSessions = completedSnap.val() || {};
-  const existingHistory = userHistorySnap.val() || {};
   const entries = Object.entries(completedSessions);
   console.log('[history] importing completed sessions', entries.length);
 

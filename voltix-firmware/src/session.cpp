@@ -163,7 +163,7 @@ static CompletedSessionSnapshot makeFinalSnapshot(EndReason reason) {
   snapshot.currency = appConfig.currency;
   snapshot.endReason = reason;
   snapshot.startMode = sessionData.startMode;
-  snapshot.endMode = systemMode;
+  snapshot.endMode = networkIsConnected() && !offlineModeBlocksAutoOnline() ? SystemMode::ONLINE : systemMode;
   const bool syncedTime = timeIsSynced();
   if (syncedTime) {
     strlcpy(snapshot.date, getDateString().c_str(), sizeof(snapshot.date));
@@ -180,6 +180,23 @@ static CompletedSessionSnapshot makeFinalSnapshot(EndReason reason) {
   snapshot.recovered = false;
   snapshot.recoverySource = nullptr;
   return snapshot;
+}
+
+static void logHistoryOutcome(const char* sessionId, bool saved, bool pushed, bool pendingSync) {
+  Serial.print("[history] LittleFS save ");
+  Serial.print(saved ? "OK" : "FAIL");
+  Serial.print(" sessionId=");
+  Serial.println(sessionId);
+
+  Serial.print("[history] Firebase push ");
+  Serial.print(pushed ? "OK" : "FAIL");
+  Serial.print(" sessionId=");
+  Serial.println(sessionId);
+
+  Serial.print("[history] pendingSync=");
+  Serial.print(pendingSync ? "true" : "false");
+  Serial.print(" syncStatus=");
+  Serial.println(pushed && !pendingSync ? "SYNCED" : (saved ? "PENDING" : "UNSAVED"));
 }
 
 static bool shouldCheckpointState() {
@@ -262,6 +279,11 @@ static void finalizeRecoveredNoLoad() {
   sessionData.state = SessionState::FINISHING;
   relaySet(false);
 
+  Serial.print("[history] sessionStop saving sessionId=");
+  Serial.print(snapshot.sessionId);
+  Serial.print(" reason=");
+  Serial.println(endReasonToString(snapshot.endReason));
+
   const bool saved = storageAppendCompletedSession(snapshot);
   bool queued = false;
   sessionData.pendingSync = saved;
@@ -270,13 +292,13 @@ static void finalizeRecoveredNoLoad() {
     if (networkIsConnected()) {
       queued = firebasePushCompletedSession(snapshot);
       if (queued) {
-        storageMarkSessionQueued(snapshot.sessionId);
-        sessionData.pendingSync = false;
+        sessionData.pendingSync = !storageMarkSessionQueued(snapshot.sessionId);
       }
     } else {
       Serial.println("[recovery] WiFi offline, recovered session saved as pending sync");
     }
   }
+  logHistoryOutcome(snapshot.sessionId, saved, queued, sessionData.pendingSync);
 
   if (storageClearActiveSessionCheckpoint()) {
     Serial.println("[recovery] Active checkpoint cleared");
@@ -485,6 +507,11 @@ void sessionStop(EndReason reason) {
   const CompletedSessionSnapshot snapshot = makeFinalSnapshot(reason);
   relaySet(false);
 
+  Serial.print("[history] sessionStop saving sessionId=");
+  Serial.print(snapshot.sessionId);
+  Serial.print(" reason=");
+  Serial.println(endReasonToString(reason));
+
   Serial.print("[session] Finishing, reason=");
   Serial.println(endReasonToString(reason));
 
@@ -497,8 +524,7 @@ void sessionStop(EndReason reason) {
     if (networkIsConnected()) {
       queued = firebasePushCompletedSession(snapshot);
       if (queued) {
-        storageMarkSessionQueued(snapshot.sessionId);
-        sessionData.pendingSync = false;
+        sessionData.pendingSync = !storageMarkSessionQueued(snapshot.sessionId);
       }
     } else {
       Serial.println("[session] WiFi offline, final session saved as pending sync");
@@ -506,6 +532,7 @@ void sessionStop(EndReason reason) {
   } else {
     Serial.println("[session] Local save failed, session remains unsynced");
   }
+  logHistoryOutcome(snapshot.sessionId, saved, queued, sessionData.pendingSync);
 
   Serial.print("[session] Final snapshot durationSec=");
   Serial.print(snapshot.durationSec);
@@ -859,9 +886,9 @@ bool offlineModeShowFinishedSummary() {
          offlineFinishedAtMs > 0;
 }
 
-void offlineModeHandleOnlineRestored() {
+bool offlineModeHandleOnlineRestored() {
   if (!offlineModeActive || offlineManualLock) {
-    return;
+    return false;
   }
 
   const bool restoredFromManual = offlineReason != OfflineEntryReason::AUTO_NO_WIFI ||
@@ -878,4 +905,5 @@ void offlineModeHandleOnlineRestored() {
   if (restoredFromManual) {
     Serial.println("[network] Online restored from manual offline");
   }
+  return restoredFromManual;
 }

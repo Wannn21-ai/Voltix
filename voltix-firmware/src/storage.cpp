@@ -132,7 +132,8 @@ static void applySyncMetadata(JsonObject entry) {
       entry["displayDate"] = syncedDate;
     }
 
-    const char* sessionId = entry["sessionId"] | entry["id"] | "";
+    char sessionId[48];
+    strlcpy(sessionId, entry["sessionId"] | entry["id"] | "", sizeof(sessionId));
     Serial.print("[time] Added syncedDate for pending session ");
     Serial.println(sessionId[0] == '\0' ? "(unknown)" : sessionId);
   } else {
@@ -557,13 +558,27 @@ bool storageSyncPendingHistoryToFirebase() {
       continue;
     }
 
+    const char* sessionId = entry["sessionId"] | entry["id"] | "";
+    Serial.print("[history] Pending sync upload sessionId=");
+    Serial.print(sessionId[0] == '\0' ? "(unknown)" : sessionId);
+    Serial.print(" path=");
+    Serial.print(Config::FIREBASE_COMPLETED_SESSIONS_PATH);
+    Serial.print("/");
+    Serial.println(sessionId[0] == '\0' ? "(unknown)" : sessionId);
+
     entry["syncStatus"] = "SYNCED";
     entry["pendingSync"] = false;
     applySyncMetadata(entry);
 
     const bool pushed = firebasePushCompletedSession(entry);
+    Serial.print("[history] Firebase push ");
+    Serial.print(pushed ? "OK" : "FAIL");
+    Serial.print(" sessionId=");
+    Serial.println(sessionId[0] == '\0' ? "(unknown)" : sessionId);
     if (pushed) {
       queued++;
+      Serial.print("[history] pendingSync=false syncStatus=SYNCED sessionId=");
+      Serial.println(sessionId[0] == '\0' ? "(unknown)" : sessionId);
     } else {
       entry["syncStatus"] = "PENDING";
       entry["pendingSync"] = true;
@@ -572,6 +587,8 @@ bool storageSyncPendingHistoryToFirebase() {
       entry.remove("syncedTime");
       entry.remove("displayDate");
       failed++;
+      Serial.print("[history] pendingSync=true syncStatus=PENDING sessionId=");
+      Serial.println(sessionId[0] == '\0' ? "(unknown)" : sessionId);
     }
   }
 

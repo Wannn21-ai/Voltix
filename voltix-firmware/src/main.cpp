@@ -396,12 +396,19 @@ void loop() {
   const bool wifiConnected = networkIsConnected();
   const bool onlineServicesAllowed = wifiConnected && !offlineModeBlocksAutoOnline();
   if (onlineServicesAllowed && !wasOnlineServicesAllowed) {
-    offlineModeHandleOnlineRestored();
+    const bool restoredFromManualOffline = offlineModeHandleOnlineRestored();
     systemMode = SystemMode::ONLINE;
+    if (restoredFromManualOffline) {
+      Serial.println("[network] Manual offline unlocked, WiFi connected");
+    }
     timeSyncBegin();
     firebaseReadConfig();
     firebasePublishLive();
-    if (timeIsSynced()) {
+    if (restoredFromManualOffline) {
+      Serial.println("[firebase] Live publish after manual offline unlock");
+      Serial.println("[history] Sync pending after manual offline unlock");
+      storageSyncPendingHistoryToFirebase();
+    } else if (timeIsSynced()) {
       Serial.println("[main] WiFi connected, syncing pending local history");
       storageSyncPendingHistoryToFirebase();
     } else {
