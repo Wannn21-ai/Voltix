@@ -207,6 +207,7 @@ async function importCompletedSessionsToUserHistory(uid, completedSessions, exis
 
     const copiedSession = {
       ...(session ?? {}),
+      uid,
       sessionId,
       ownerUid: uid,
       copiedAt: Date.now(),

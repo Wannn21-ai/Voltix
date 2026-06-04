@@ -64,8 +64,11 @@ static void logHttp(const char* method, const char* path, int statusCode, bool o
   Serial.println(ok ? "OK" : "FAIL");
 }
 
-static bool httpRequest(const char* method, const char* path, const String& payload, String* response, bool forceLog) {
+static bool httpRequest(const char* method, const char* path, const String& payload, String* response, bool forceLog, int* statusOut = nullptr) {
   if (!networkIsConnected()) {
+    if (statusOut != nullptr) {
+      *statusOut = -1;
+    }
     if (forceLog) {
       Serial.print("[firebase] SKIP ");
       Serial.print(method);
@@ -82,6 +85,9 @@ static bool httpRequest(const char* method, const char* path, const String& payl
   HTTPClient http;
   const String url = makeUrl(path);
   if (!http.begin(client, url)) {
+    if (statusOut != nullptr) {
+      *statusOut = -1;
+    }
     logHttp(method, path, -1, false, true);
     return false;
   }
@@ -98,6 +104,9 @@ static bool httpRequest(const char* method, const char* path, const String& payl
   }
 
   const bool ok = statusCode >= 200 && statusCode < 300;
+  if (statusOut != nullptr) {
+    *statusOut = statusCode;
+  }
   if (response != nullptr) {
     *response = http.getString();
   }
@@ -394,10 +403,18 @@ bool firebasePushCompletedSession(const CompletedSessionSnapshot& snapshot) {
   String payload;
   serializeJson(doc, payload);
   const String path = completedSessionPath(snapshot.sessionId);
-  const bool ok = httpRequest("PUT", path.c_str(), payload, nullptr, true);
+  int statusCode = -1;
+  const bool ok = httpRequest("PUT", path.c_str(), payload, nullptr, true, &statusCode);
   if (ok) {
     Serial.print("[firebase] Pending session queued sessionId=");
     Serial.println(snapshot.sessionId);
+  } else {
+    Serial.print("[firebase] Completed session push FAIL sessionId=");
+    Serial.print(snapshot.sessionId);
+    Serial.print(" status=");
+    Serial.println(statusCode);
+    Serial.print("[firebase] payload=");
+    Serial.println(payload);
   }
   return ok;
 }
@@ -412,10 +429,18 @@ bool firebasePushCompletedSession(JsonObject entry) {
   String payload;
   serializeJson(entry, payload);
   const String path = completedSessionPath(sessionId);
-  const bool ok = httpRequest("PUT", path.c_str(), payload, nullptr, true);
+  int statusCode = -1;
+  const bool ok = httpRequest("PUT", path.c_str(), payload, nullptr, true, &statusCode);
   if (ok) {
     Serial.print("[firebase] Pending session queued sessionId=");
     Serial.println(sessionId);
+  } else {
+    Serial.print("[firebase] Completed session push FAIL sessionId=");
+    Serial.print(sessionId);
+    Serial.print(" status=");
+    Serial.println(statusCode);
+    Serial.print("[firebase] payload=");
+    Serial.println(payload);
   }
   return ok;
 }
