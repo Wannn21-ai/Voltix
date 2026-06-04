@@ -545,6 +545,8 @@ bool storageSyncPendingHistoryToFirebase() {
       pending++;
     }
   }
+  Serial.print("[history] pending sync count=");
+  Serial.println(pending);
 
   if (!networkIsConnected()) {
     Serial.print("[storage] Pending sync total=");

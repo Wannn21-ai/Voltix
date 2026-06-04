@@ -32,7 +32,11 @@ const state = {
   user: null,
   config: {},
   sessions: [],
-  visibleSessions: []
+  visibleSessions: [],
+  historyCounts: {
+    device: 0,
+    user: 0
+  }
 };
 const USER_HISTORY_EXTRA_FIELDS = new Set(['ownerUid', 'copiedAt', 'sourcePath', 'userLabel', 'note']);
 
@@ -77,7 +81,7 @@ function bindEls(){
     'refreshBtn','exportCsvBtn','historySearch','historyFilter','historySort','historyHeaderStatus',
     'totalSessions','totalEnergyKwh','totalEnergyWh','totalCost','highestPeakPower',
     'highestPeakPowerDevice','mostEnergyDevice','mostEnergyValue','overloadCount',
-    'peakWarning','overloadWarning','historyStatus','historyError','emptyState','historyList'
+    'peakWarning','overloadWarning','historyStatus','historyDebug','historyError','emptyState','historyList'
   ].forEach(id=>{ els[id] = qs(id); });
 }
 
@@ -101,28 +105,33 @@ async function loadHistory(){
 
     const completedSessions = completedSnap.val() || {};
     const userHistory = historySnap.val() || {};
-    const deviceCount = Object.keys(completedSessions).length;
-    const userCount = Object.keys(userHistory).length;
-    const mergedSessions = mergeHistoryMaps(completedSessions, userHistory);
-    const deviceOnlyCount = mergedSessions.filter(session=>session.sourceDeviceOnly === true).length;
+    const deviceSessions = normalizeCompletedSessions(completedSessions);
+    const userSessions = normalizeCompletedSessions(userHistory);
+    const mergedSessions = mergeHistorySessions(deviceSessions, userSessions);
 
-    console.log(`[history] device completedSessions count=${deviceCount}`);
-    console.log(`[history] user history count=${userCount}`);
+    state.historyCounts = {
+      device: deviceSessions.length,
+      user: userSessions.length
+    };
+
+    console.log(`[history] device completedSessions count=${deviceSessions.length}`);
+    console.log(`[history] user history count=${userSessions.length}`);
     console.log(`[history] merged history count=${mergedSessions.length}`);
-    console.log(`[history] device-only sessions displayed=${deviceOnlyCount}`);
+    console.log('[history] rendering merged sessions');
 
     state.config = configSnap?.val() || {};
     state.sessions = mergedSessions;
     renderSummary(state.sessions);
     renderFilteredHistory();
 
-    mirrorCompletedSessionsToUserHistory(state.user.uid, completedSessions, userHistory).catch(error=>{
-      console.warn('[history] optional completedSessions mirror failed', error);
+    importCompletedSessionsToUserHistory(state.user.uid, completedSessions, userHistory).catch(error=>{
+      console.warn('[history] mirror to user history failed', error);
     });
   }catch(error){
     console.error('[history] failed to load sessions', error);
     showError(`Failed to load history: ${error.message}`);
     state.sessions = [];
+    state.historyCounts = { device: 0, user: 0 };
     renderSummary([]);
     renderFilteredHistory();
   }finally{
@@ -130,12 +139,14 @@ async function loadHistory(){
   }
 }
 
-function mergeHistoryMaps(deviceSessions, userHistory){
-  const merged = new Map();
-  const normalizedDevice = normalizeSessionMap(deviceSessions);
-  const normalizedUser = normalizeSessionMap(userHistory);
+function normalizeCompletedSessions(value){
+  return normalizeSessionMap(value);
+}
 
-  normalizedDevice.forEach(session=>{
+function mergeHistorySessions(deviceSessions, userSessions){
+  const merged = new Map();
+
+  deviceSessions.forEach(session=>{
     const sessionId = session?.sessionId ?? session?.id;
     if(!sessionId) return;
     merged.set(sessionId, {
@@ -148,7 +159,7 @@ function mergeHistoryMaps(deviceSessions, userHistory){
     });
   });
 
-  normalizedUser.forEach(session=>{
+  userSessions.forEach(session=>{
     const sessionId = session?.sessionId ?? session?.id;
     if(!sessionId) return;
     const existing = merged.get(sessionId);
@@ -177,7 +188,7 @@ function mergeUserExtras(baseSession, userSession){
   return merged;
 }
 
-async function mirrorCompletedSessionsToUserHistory(uid, completedSessions, existingHistory){
+async function importCompletedSessionsToUserHistory(uid, completedSessions, existingHistory){
   const completedPath = `/devices/${DEVICE_ID}/completedSessions`;
   const userHistoryPath = `/users/${uid}/history`;
   const entries = Object.entries(completedSessions);
@@ -246,9 +257,15 @@ function renderFilteredHistory(){
   state.visibleSessions = sessions;
   renderHistory(sessions);
   els.historyStatus.textContent = `${sessions.length} shown / ${state.sessions.length} total`;
+  updateHistoryDebug(sessions.length);
   if(els.historyHeaderStatus){
     els.historyHeaderStatus.textContent = `${state.sessions.length} sessions`;
   }
+}
+
+function updateHistoryDebug(showingCount = state.sessions.length){
+  if(!els.historyDebug) return;
+  els.historyDebug.textContent = `Device: ${state.historyCounts.device} · User: ${state.historyCounts.user} · Showing: ${showingCount}`;
 }
 
 function sorter(mode){
