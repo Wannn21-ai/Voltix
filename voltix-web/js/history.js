@@ -207,17 +207,23 @@ async function importCompletedSessionsToUserHistory(uid, completedSessions, exis
 
     const copiedSession = {
       ...(session ?? {}),
-      uid,
+      id: sessionId,
       sessionId,
+      uid,
       ownerUid: uid,
       copiedAt: Date.now(),
       sourcePath: `${completedPath}/${sessionId}`,
       syncStatus: 'SYNCED'
     };
 
-    await set(ref(db, `${userHistoryPath}/${sessionId}`), copiedSession);
-    existingHistory[sessionId] = copiedSession;
-    console.log('[history] copied session', sessionId);
+    console.log(`[history] mirror sessionId=${sessionId} uid=${uid}`);
+    try{
+      await set(ref(db, `${userHistoryPath}/${sessionId}`), copiedSession);
+      existingHistory[sessionId] = copiedSession;
+      console.log(`[history] mirror OK sessionId=${sessionId}`);
+    }catch(error){
+      console.warn(`[history] mirror FAIL sessionId=${sessionId} error=${error.message}`);
+    }
   }
 }
 
