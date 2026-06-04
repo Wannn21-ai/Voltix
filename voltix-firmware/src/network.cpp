@@ -1,6 +1,7 @@
 #include "network.h"
 #include "config.h"
 #include "credentials.h"
+#include "display.h"
 #include "relay.h"
 #include "session.h"
 #include "state.h"
@@ -26,12 +27,25 @@ constexpr unsigned long BOOT_NEXT_ATTEMPT_MS = 1000UL;
 constexpr unsigned long BOOT_EXIT_MANUAL_MS = 3000UL;
 constexpr unsigned long BOOT_CLEAR_WIFI_MS = 5000UL;
 constexpr unsigned long BOOT_ENTER_OFFLINE_MS = 10000UL;
+constexpr unsigned long BUTTON_HOLD_DISPLAY_START_MS = 500UL;
+constexpr unsigned long BUTTON_PREVIEW_NEXT_MS = 500UL;
+constexpr unsigned long BUTTON_PREVIEW_ONLINE_MS = 2500UL;
+constexpr unsigned long BUTTON_PREVIEW_RESET_MS = 5000UL;
+constexpr unsigned long BUTTON_PREVIEW_OFFLINE_MS = 10000UL;
 constexpr byte DNS_PORT = 53;
 
 enum class WifiSource {
   NONE,
   SAVED,
   FALLBACK
+};
+
+enum class ButtonPreview {
+  NONE,
+  NEXT_DEVICE,
+  TRY_ONLINE,
+  RESET_WIFI,
+  MANUAL_OFFLINE
 };
 
 static unsigned long lastReconnectAttemptMs = 0;
@@ -46,7 +60,9 @@ static bool restartPending = false;
 static bool portalOfflinePending = false;
 static bool bootComplete = false;
 static bool bootButtonArmed = false;
+static bool bootButtonHoldDisplayActive = false;
 static bool initialNetworkSetup = true;
+static ButtonPreview lastBootButtonPreview = ButtonPreview::NONE;
 static String savedWifiSsid;
 static String savedWifiPassword;
 static String activeWifiSsid;
@@ -80,6 +96,77 @@ bool isSessionBusyForNetwork() {
          sessionIsActive() ||
          relayIsOn() ||
          sessionRecoveryIsActive();
+}
+
+ButtonPreview buttonPreviewForDuration(unsigned long heldMs) {
+  if (heldMs >= BUTTON_PREVIEW_OFFLINE_MS) {
+    return ButtonPreview::MANUAL_OFFLINE;
+  }
+  if (heldMs >= BUTTON_PREVIEW_RESET_MS) {
+    return ButtonPreview::RESET_WIFI;
+  }
+  if (heldMs >= BUTTON_PREVIEW_ONLINE_MS) {
+    return ButtonPreview::TRY_ONLINE;
+  }
+  if (heldMs >= BUTTON_PREVIEW_NEXT_MS) {
+    return ButtonPreview::NEXT_DEVICE;
+  }
+  return ButtonPreview::NONE;
+}
+
+const char* buttonPreviewDisplayText(ButtonPreview preview) {
+  switch (preview) {
+    case ButtonPreview::NEXT_DEVICE:
+      return "Release: Next Device";
+    case ButtonPreview::TRY_ONLINE:
+      return "Release: Try Online";
+    case ButtonPreview::RESET_WIFI:
+      return "Release: Reset WiFi";
+    case ButtonPreview::MANUAL_OFFLINE:
+      return "Release: Offline";
+    default:
+      return "Hold...";
+  }
+}
+
+const char* buttonPreviewLogText(ButtonPreview preview) {
+  switch (preview) {
+    case ButtonPreview::NEXT_DEVICE:
+      return "Next Device";
+    case ButtonPreview::TRY_ONLINE:
+      return "Try Online";
+    case ButtonPreview::RESET_WIFI:
+      return "Reset WiFi";
+    case ButtonPreview::MANUAL_OFFLINE:
+      return "Manual Offline";
+    default:
+      return "None";
+  }
+}
+
+uint8_t buttonHoldProgressPercent(unsigned long heldMs) {
+  unsigned long startMs = 0;
+  unsigned long endMs = BUTTON_PREVIEW_NEXT_MS;
+
+  if (heldMs >= BUTTON_PREVIEW_OFFLINE_MS) {
+    return 100;
+  }
+  if (heldMs >= BUTTON_PREVIEW_RESET_MS) {
+    startMs = BUTTON_PREVIEW_RESET_MS;
+    endMs = BUTTON_PREVIEW_OFFLINE_MS;
+  } else if (heldMs >= BUTTON_PREVIEW_ONLINE_MS) {
+    startMs = BUTTON_PREVIEW_ONLINE_MS;
+    endMs = BUTTON_PREVIEW_RESET_MS;
+  } else if (heldMs >= BUTTON_PREVIEW_NEXT_MS) {
+    startMs = BUTTON_PREVIEW_NEXT_MS;
+    endMs = BUTTON_PREVIEW_ONLINE_MS;
+  }
+
+  const unsigned long spanMs = endMs - startMs;
+  if (spanMs == 0 || heldMs <= startMs) {
+    return 0;
+  }
+  return static_cast<uint8_t>(min(100UL, ((heldMs - startMs) * 100UL) / spanMs));
 }
 
 bool canStartCaptivePortal(const char* reason) {
@@ -286,22 +373,48 @@ void updateBootButton() {
   if (!pressed) {
     if (bootButtonPressedAtMs > 0 && bootButtonArmed) {
       const unsigned long heldMs = millis() - bootButtonPressedAtMs;
+      bool actionHandled = false;
+
+      if (bootButtonHoldDisplayActive) {
+        displayClearButtonHold();
+      }
+
       if (heldMs >= BOOT_ENTER_OFFLINE_MS) {
         offlineModeEnter(OfflineEntryReason::MANUAL_BOOT_10S);
+        displayShowButtonFeedback("Offline Mode");
+        actionHandled = true;
+        Serial.println("[button] released action=Manual Offline");
       } else if (heldMs >= BOOT_CLEAR_WIFI_MS) {
         Serial.println("[network] BOOT 5s release detected, clearing WiFi");
         clearWiFiCredentials();
         scheduleRestart();
+        displayShowButtonFeedback("Reset WiFi");
+        actionHandled = true;
+        Serial.println("[button] released action=Reset WiFi");
       } else if (heldMs >= BOOT_EXIT_MANUAL_MS) {
-        offlineModeExitManualLockAndTryOnline();
+        if (offlineModeExitManualLockAndTryOnline()) {
+          displayShowButtonFeedback("Trying Online");
+          actionHandled = true;
+          Serial.println("[button] released action=Try Online");
+        }
       } else if (heldMs >= BOOT_NEXT_ATTEMPT_MS) {
         if (offlineModeCanStartNextAttempt()) {
           offlineModeStartNextAttempt(false);
+          displayShowButtonFeedback("Next Device");
+          actionHandled = true;
+          Serial.println("[button] released action=Next Device");
         }
+      }
+
+      if (!actionHandled && bootButtonHoldDisplayActive) {
+        displayShowButtonFeedback("Button ignored");
+        Serial.println("[button] released action=ignored");
       }
     }
     bootButtonPressedAtMs = 0;
     bootButtonArmed = true;
+    bootButtonHoldDisplayActive = false;
+    lastBootButtonPreview = ButtonPreview::NONE;
     return;
   }
 
@@ -311,8 +424,33 @@ void updateBootButton() {
 
   if (bootButtonPressedAtMs == 0) {
     bootButtonPressedAtMs = millis();
+    bootButtonHoldDisplayActive = false;
+    lastBootButtonPreview = ButtonPreview::NONE;
     return;
   }
+
+  const unsigned long heldMs = millis() - bootButtonPressedAtMs;
+  if (heldMs < BUTTON_HOLD_DISPLAY_START_MS) {
+    return;
+  }
+
+  const ButtonPreview preview = buttonPreviewForDuration(heldMs);
+  if (!bootButtonHoldDisplayActive) {
+    Serial.print("[button] hold display active duration=");
+    Serial.println(heldMs);
+    bootButtonHoldDisplayActive = true;
+  }
+  if (preview != lastBootButtonPreview) {
+    Serial.print("[button] preview action=");
+    Serial.println(buttonPreviewLogText(preview));
+    lastBootButtonPreview = preview;
+  }
+
+  displayShowButtonHold(
+    heldMs,
+    buttonPreviewDisplayText(preview),
+    buttonHoldProgressPercent(heldMs)
+  );
 }
 }
 

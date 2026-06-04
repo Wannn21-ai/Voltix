@@ -15,11 +15,22 @@ constexpr int SCREEN_HEIGHT = 64;
 constexpr int OLED_RESET = -1;
 constexpr uint8_t OLED_ADDRESS = 0x3C;
 constexpr unsigned long DISPLAY_INTERVAL_MS = 500UL;
+constexpr unsigned long BUTTON_DISPLAY_INTERVAL_MS = 200UL;
+constexpr unsigned long BUTTON_FEEDBACK_MS = 1200UL;
 constexpr size_t MAX_LINE_CHARS = 21;
+constexpr size_t BUTTON_LABEL_CHARS = 22;
 
 Adafruit_SSD1306 oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 bool oledReady = false;
 unsigned long lastDisplayMs = 0;
+bool buttonHoldVisible = false;
+unsigned long buttonHoldDurationMs = 0;
+unsigned long lastButtonHoldDisplayMs = 0;
+uint8_t buttonHoldProgressPercent = 0;
+char buttonHoldReleaseAction[BUTTON_LABEL_CHARS] = "";
+bool buttonFeedbackVisible = false;
+unsigned long buttonFeedbackUntilMs = 0;
+char buttonFeedbackMessage[BUTTON_LABEL_CHARS] = "";
 
 void drawLine(uint8_t line, const char* text) {
   oled.setCursor(0, line * 10);
@@ -68,6 +79,57 @@ void startScreen() {
 
 void finishScreen() {
   oled.display();
+}
+
+void copyDisplayText(const char* input, char* output, size_t outputSize) {
+  if (outputSize == 0) {
+    return;
+  }
+
+  snprintf(output, outputSize, "%s", input != nullptr ? input : "");
+}
+
+bool screenAllowsButtonOverlay() {
+  return !sessionRecoveryIsActive() && sessionData.state != SessionState::OVERLOAD;
+}
+
+void formatProgressBar(uint8_t percent, char* output, size_t outputSize) {
+  const uint8_t safePercent = percent > 100 ? 100 : percent;
+  const uint8_t filled = (safePercent * 10U + 50U) / 100U;
+  size_t pos = 0;
+
+  if (outputSize == 0) {
+    return;
+  }
+
+  output[pos++] = '[';
+  for (uint8_t i = 0; i < 10 && pos + 2 < outputSize; i++) {
+    output[pos++] = i < filled ? '#' : '-';
+  }
+  if (pos + 1 < outputSize) {
+    output[pos++] = ']';
+  }
+  output[pos] = '\0';
+}
+
+void renderButtonHold() {
+  char line[32];
+  char progress[16];
+
+  startScreen();
+  drawLine(0, "BUTTON HOLD");
+  snprintf(line, sizeof(line), "Time: %lu.%lus", buttonHoldDurationMs / 1000UL, (buttonHoldDurationMs % 1000UL) / 100UL);
+  drawLine(1, line);
+  drawLine(2, buttonHoldReleaseAction);
+  formatProgressBar(buttonHoldProgressPercent, progress, sizeof(progress));
+  drawLine(4, progress);
+  finishScreen();
+}
+
+void renderButtonFeedback() {
+  startScreen();
+  drawLine(1, buttonFeedbackMessage);
+  finishScreen();
 }
 
 void renderIdle() {
@@ -209,6 +271,24 @@ void renderScreen() {
     return;
   }
 
+  if (sessionData.state == SessionState::OVERLOAD) {
+    renderOverload();
+    return;
+  }
+
+  if (buttonHoldVisible && screenAllowsButtonOverlay()) {
+    renderButtonHold();
+    return;
+  }
+
+  if (buttonFeedbackVisible) {
+    if (millis() < buttonFeedbackUntilMs && screenAllowsButtonOverlay()) {
+      renderButtonFeedback();
+      return;
+    }
+    buttonFeedbackVisible = false;
+  }
+
   if (offlineModeShowTryingOnline()) {
     renderTryingOnline();
     return;
@@ -279,7 +359,8 @@ void displayBegin() {
 
 void displayUpdate() {
   const unsigned long now = millis();
-  if (now - lastDisplayMs < DISPLAY_INTERVAL_MS) {
+  const unsigned long intervalMs = buttonHoldVisible ? BUTTON_DISPLAY_INTERVAL_MS : DISPLAY_INTERVAL_MS;
+  if (now - lastDisplayMs < intervalMs) {
     return;
   }
 
@@ -300,5 +381,50 @@ void displayShowBoot() {
 }
 
 void displayShowStatus() {
+  renderScreen();
+}
+
+void displayShowButtonHold(unsigned long heldMs, const char* releaseAction, uint8_t progressPercent) {
+  if (!oledReady) {
+    return;
+  }
+
+  const unsigned long now = millis();
+  buttonHoldVisible = true;
+  buttonFeedbackVisible = false;
+  buttonHoldDurationMs = heldMs;
+  buttonHoldProgressPercent = progressPercent > 100 ? 100 : progressPercent;
+  copyDisplayText(releaseAction, buttonHoldReleaseAction, sizeof(buttonHoldReleaseAction));
+
+  if (now - lastButtonHoldDisplayMs < BUTTON_DISPLAY_INTERVAL_MS) {
+    return;
+  }
+
+  lastButtonHoldDisplayMs = now;
+  lastDisplayMs = now;
+  renderScreen();
+}
+
+void displayClearButtonHold() {
+  buttonHoldVisible = false;
+  lastButtonHoldDisplayMs = 0;
+  if (!oledReady) {
+    return;
+  }
+
+  lastDisplayMs = millis();
+  renderScreen();
+}
+
+void displayShowButtonFeedback(const char* message) {
+  if (!oledReady) {
+    return;
+  }
+
+  buttonHoldVisible = false;
+  buttonFeedbackVisible = true;
+  buttonFeedbackUntilMs = millis() + BUTTON_FEEDBACK_MS;
+  copyDisplayText(message, buttonFeedbackMessage, sizeof(buttonFeedbackMessage));
+  lastDisplayMs = millis();
   renderScreen();
 }
