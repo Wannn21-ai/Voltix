@@ -39,6 +39,7 @@ const numericFields = [
 
 const els = {};
 let currentUser = null;
+let currentDeviceConfig = DEFAULT_CONFIG;
 
 async function init(){
   applyTheme();
@@ -83,6 +84,7 @@ async function loadSettings(){
     ]);
 
     const config = withDefaults(configSnap.val());
+    currentDeviceConfig = config;
     const local = loadUiSettings();
     const userSettings = userSettingsSnap?.val() || {};
     const ui = {
@@ -132,6 +134,7 @@ async function handleSave(event){
         updatedAt: Date.now()
       })
     ]);
+    currentDeviceConfig = config;
     saveUiSettings(uiSettings);
     setMessage('Settings saved. ESP32 will apply device config on its next config sync.', 'success');
     els.settingsStatus.textContent = 'Saved';
@@ -157,7 +160,11 @@ function withDefaults(config){
     loadCurrentThreshold: source.loadCurrentThreshold ?? DEFAULT_CONFIG.loadCurrentThreshold,
     loadRemovedDelaySec: source.loadRemovedDelaySec ?? DEFAULT_CONFIG.loadRemovedDelaySec,
     offlineTimeoutSec: source.offlineTimeoutSec ?? DEFAULT_CONFIG.offlineTimeoutSec,
-    checkpointIntervalSec: source.checkpointIntervalSec ?? DEFAULT_CONFIG.checkpointIntervalSec
+    checkpointIntervalSec: source.checkpointIntervalSec ?? DEFAULT_CONFIG.checkpointIntervalSec,
+    configRevision: Number(source.configRevision ?? 0),
+    updatedAt: source.updatedAt ?? null,
+    updatedBy: source.updatedBy ?? null,
+    source: source.source ?? null
   };
 }
 
@@ -179,8 +186,14 @@ function fillUiForm(settings){
 }
 
 function readDeviceConfig(){
+  const now = Date.now();
+  const previousRevision = Number(currentDeviceConfig?.configRevision ?? 0);
   const config = {
-    currency: els.currency.value.trim().toUpperCase()
+    currency: els.currency.value.trim().toUpperCase(),
+    configRevision: Math.max(previousRevision + 1, now),
+    updatedAt: now,
+    updatedBy: currentUser?.uid ?? 'WEB',
+    source: 'WEB_SETTINGS'
   };
 
   numericFields.forEach(field=>{

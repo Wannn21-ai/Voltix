@@ -161,6 +161,7 @@ static CompletedSessionSnapshot makeFinalSnapshot(EndReason reason) {
   snapshot.powerFactor = sensorData.powerFactor;
   snapshot.tariff = appConfig.tariffPerKwh;
   snapshot.currency = appConfig.currency;
+  snapshot.overloadThreshold = appConfig.overloadThresholdW;
   snapshot.endReason = reason;
   snapshot.startMode = sessionData.startMode;
   snapshot.endMode = networkIsConnected() && !offlineModeBlocksAutoOnline() ? SystemMode::ONLINE : systemMode;
@@ -618,6 +619,12 @@ void sessionUpdate() {
   }
 
   if (sensorData.valid && sensorData.power >= appConfig.overloadThresholdW) {
+    Serial.print("[overload] Triggered power=");
+    Serial.print(sensorData.power, 2);
+    Serial.print(" threshold=");
+    Serial.print(appConfig.overloadThresholdW, 2);
+    Serial.print(" mode=");
+    Serial.println(systemModeToString(systemMode));
     sessionData.state = SessionState::OVERLOAD;
     sessionStop(EndReason::OVERLOAD);
     return;
@@ -796,6 +803,9 @@ bool offlineModeEnter(OfflineEntryReason reason) {
   } else {
     Serial.println("[offline] Enter AUTO offline reason=AUTO_NO_WIFI");
   }
+  Serial.print("[offline] Using overload threshold=");
+  Serial.print(appConfig.overloadThresholdW, 2);
+  Serial.println(" W");
 
   offlineModeStartNextAttempt(true);
   return true;

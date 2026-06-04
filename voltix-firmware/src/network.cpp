@@ -2,6 +2,7 @@
 #include "config.h"
 #include "credentials.h"
 #include "display.h"
+#include "firebase_sync.h"
 #include "relay.h"
 #include "session.h"
 #include "state.h"
@@ -17,7 +18,17 @@ constexpr const char* PREF_NAMESPACE = "voltix";
 constexpr const char* PREF_KEY_WIFI_SSID = "wifi_ssid";
 constexpr const char* PREF_KEY_WIFI_PASS = "wifi_pass";
 constexpr const char* PREF_KEY_TARIFF = "tariff";
-constexpr const char* PREF_KEY_OVERLOAD = "overloadThreshold";
+constexpr const char* PREF_KEY_CURRENCY = "currency";
+constexpr const char* PREF_KEY_OVERLOAD_THRESHOLD = "overloadThreshold";
+constexpr const char* PREF_KEY_OVERLOAD_WARNING = "overloadWarningPercent";
+constexpr const char* PREF_KEY_LOAD_POWER = "loadPowerThreshold";
+constexpr const char* PREF_KEY_LOAD_CURRENT = "loadCurrentThreshold";
+constexpr const char* PREF_KEY_LOAD_REMOVED_DELAY = "loadRemovedDelaySec";
+constexpr const char* PREF_KEY_OFFLINE_TIMEOUT = "offlineTimeoutSec";
+constexpr const char* PREF_KEY_CHECKPOINT_INTERVAL = "checkpointIntervalSec";
+constexpr const char* PREF_KEY_CONFIG_REVISION = "configRevision";
+constexpr const char* PREF_KEY_CONFIG_PENDING_SYNC = "configPendingSync";
+constexpr const char* PREF_KEY_CONFIG_SOURCE = "configSource";
 constexpr const char* SETUP_AP_SSID = "Voltix-Setup";
 constexpr const char* SETUP_AP_PASSWORD = "12345678";
 constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = 15000UL;
@@ -83,6 +94,72 @@ String htmlEscape(const String& value) {
   escaped.replace("<", "&lt;");
   escaped.replace(">", "&gt;");
   return escaped;
+}
+
+String configRevisionText() {
+  char buffer[24];
+  snprintf(buffer, sizeof(buffer), "%llu", appConfig.configRevision);
+  return String(buffer);
+}
+
+float requestFloatOrCurrent(const char* name, float currentValue, float fallbackValue, bool allowZero = false) {
+  if (!portalServer.hasArg(name)) {
+    return currentValue;
+  }
+  const float value = portalServer.arg(name).toFloat();
+  if (value > 0.0f || (allowZero && value >= 0.0f)) {
+    return value;
+  }
+  return fallbackValue;
+}
+
+unsigned long requestULongOrCurrent(const char* name, unsigned long currentValue, unsigned long fallbackValue, bool allowZero = false) {
+  if (!portalServer.hasArg(name)) {
+    return currentValue;
+  }
+  const long rawValue = portalServer.arg(name).toInt();
+  if (rawValue > 0 || (allowZero && rawValue >= 0)) {
+    return static_cast<unsigned long>(rawValue);
+  }
+  return fallbackValue;
+}
+
+void applyPortalConfigFromRequest(bool bumpRevision) {
+  appConfig.tariffPerKwh = requestFloatOrCurrent("tariff", appConfig.tariffPerKwh, Config::DEFAULT_TARIFF, true);
+  if (portalServer.hasArg("currency") && portalServer.arg("currency").length() > 0) {
+    strlcpy(appConfig.currency, portalServer.arg("currency").c_str(), sizeof(appConfig.currency));
+  }
+  appConfig.overloadThresholdW = requestFloatOrCurrent("overloadThreshold", appConfig.overloadThresholdW, Config::OVERLOAD_THRESHOLD_W);
+  appConfig.overloadWarningPercent = requestFloatOrCurrent("overloadWarningPercent", appConfig.overloadWarningPercent, 90.0f);
+  appConfig.loadPowerThresholdW = requestFloatOrCurrent("loadPowerThreshold", appConfig.loadPowerThresholdW, Config::LOAD_POWER_THRESHOLD_W, true);
+  appConfig.loadCurrentThresholdA = requestFloatOrCurrent("loadCurrentThreshold", appConfig.loadCurrentThresholdA, Config::LOAD_CURRENT_THRESHOLD_A, true);
+  appConfig.loadRemovedDelaySec = requestULongOrCurrent("loadRemovedDelaySec", appConfig.loadRemovedDelaySec, 2UL, true);
+  appConfig.offlineTimeoutSec = requestULongOrCurrent("offlineTimeoutSec", appConfig.offlineTimeoutSec, 300UL, true);
+  appConfig.checkpointIntervalSec = requestULongOrCurrent("checkpointIntervalSec", appConfig.checkpointIntervalSec, 30UL);
+
+  if (bumpRevision) {
+    const uint64_t millisRevision = static_cast<uint64_t>(millis());
+    const uint64_t nextRevision = appConfig.configRevision + 1ULL;
+    appConfig.configRevision = nextRevision > millisRevision ? nextRevision : millisRevision;
+  }
+  appConfig.configPendingSync = true;
+  strlcpy(appConfig.configSource, "CAPTIVE_PORTAL", sizeof(appConfig.configSource));
+  saveLocalConfig();
+}
+
+void syncPortalConfigIfPossible() {
+  if (networkIsConnected()) {
+    if (!firebasePushDeviceConfig()) {
+      appConfig.configPendingSync = true;
+      saveLocalConfig();
+      Serial.println("[config] Config pending sync");
+    }
+    return;
+  }
+
+  appConfig.configPendingSync = true;
+  saveLocalConfig();
+  Serial.println("[config] Config pending sync");
 }
 
 void scheduleRestart() {
@@ -190,32 +267,51 @@ bool canStartCaptivePortal(const char* reason) {
 
 void sendSetupForm() {
   String page;
-  page.reserve(1800);
+  page.reserve(3600);
   page += F("<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>");
   page += F("<title>Voltix Setup</title><style>");
   page += F("body{font-family:Arial,sans-serif;margin:0;background:#f6f7f9;color:#111}");
   page += F("main{max-width:420px;margin:32px auto;padding:20px;background:#fff;border:1px solid #ddd;border-radius:8px}");
   page += F("label{display:block;margin-top:14px;font-weight:600}input{box-sizing:border-box;width:100%;padding:10px;margin-top:6px;border:1px solid #bbb;border-radius:6px;font-size:16px}");
-  page += F("button{width:100%;margin-top:18px;padding:12px;border:0;border-radius:6px;background:#111;color:#fff;font-size:16px}");
-  page += F(".secondary{background:#444}a{display:block;margin-top:16px;color:#333;text-align:center}</style></head><body><main>");
-  page += F("<h1>Voltix Setup</h1><form method='post' action='/save'>");
-  page += F("<label>WiFi SSID<input name='ssid' required value='");
+  page += F("button{width:100%;margin-top:14px;padding:12px;border:0;border-radius:6px;background:#111;color:#fff;font-size:16px}");
+  page += F(".secondary{background:#444}.ghost{background:#0b6}small{display:block;margin-top:10px;color:#555}a{display:block;margin-top:16px;color:#333;text-align:center}</style></head><body><main>");
+  page += F("<h1>Voltix Setup</h1><form id='setupForm' method='post' action='/save'>");
+  page += F("<label>WiFi SSID<input name='ssid' value='");
   page += htmlEscape(savedWifiSsid);
   page += F("'></label><label>WiFi Password<input name='password' type='password' value='");
   page += htmlEscape(savedWifiPassword);
   page += F("'></label><label>Tariff<input name='tariff' type='number' step='0.01' value='");
-  page += String(appConfig.tariffPerKwh > 0.0f ? appConfig.tariffPerKwh : Config::DEFAULT_TARIFF, 2);
+  page += String(appConfig.tariffPerKwh, 2);
+  page += F("'></label><label>Currency<input name='currency' maxlength='7' value='");
+  page += htmlEscape(String(appConfig.currency));
   page += F("'></label><label>Overload Threshold (W)<input name='overloadThreshold' type='number' step='0.1' value='");
   page += String(appConfig.overloadThresholdW > 0.0f ? appConfig.overloadThresholdW : Config::OVERLOAD_THRESHOLD_W, 1);
-  page += F("'></label><button type='submit'>Save and Restart</button></form>");
-  page += F("<form method='post' action='/offline'><button class='secondary' type='submit'>Lanjutkan Mode Offline</button></form>");
+  page += F("'></label><label>Overload Warning (%)<input name='overloadWarningPercent' type='number' step='0.1' value='");
+  page += String(appConfig.overloadWarningPercent > 0.0f ? appConfig.overloadWarningPercent : 90.0f, 1);
+  page += F("'></label><label>Load Power Threshold (W)<input name='loadPowerThreshold' type='number' step='0.1' value='");
+  page += String(appConfig.loadPowerThresholdW, 1);
+  page += F("'></label><label>Load Current Threshold (A)<input name='loadCurrentThreshold' type='number' step='0.01' value='");
+  page += String(appConfig.loadCurrentThresholdA, 2);
+  page += F("'></label><label>Load Removed Delay (sec)<input name='loadRemovedDelaySec' type='number' step='1' value='");
+  page += String(appConfig.loadRemovedDelaySec);
+  page += F("'></label><label>Offline Timeout (sec)<input name='offlineTimeoutSec' type='number' step='1' value='");
+  page += String(appConfig.offlineTimeoutSec);
+  page += F("'></label><label>Checkpoint Interval (sec)<input name='checkpointIntervalSec' type='number' step='1' value='");
+  page += String(appConfig.checkpointIntervalSec > 0 ? appConfig.checkpointIntervalSec : 30UL);
+  page += F("'></label><small>Revision ");
+  page += configRevisionText();
+  page += F(" source ");
+  page += htmlEscape(String(appConfig.configSource));
+  page += F("</small><button class='ghost' type='submit' formaction='/save-config'>Save Config</button>");
+  page += F("<button type='submit'>Save WiFi + Config</button>");
+  page += F("<button class='secondary' type='submit' formaction='/offline'>Lanjutkan Mode Offline</button></form>");
   page += F("<a href='/status'>Status</a><a href='/reset-wifi'>Reset WiFi</a></main></body></html>");
   portalServer.send(200, "text/html", page);
 }
 
 void sendStatus() {
   String status;
-  status.reserve(180);
+  status.reserve(520);
   status += F("{\"mode\":\"");
   status += portalActive ? F("setup_portal") : F("station");
   status += F("\",\"savedSsidExists\":\"");
@@ -224,6 +320,24 @@ void sendStatus() {
   status += portalActive ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
   status += F("\",\"systemMode\":\"");
   status += systemModeToString(systemMode);
+  status += F("\",\"tariff\":");
+  status += String(appConfig.tariffPerKwh, 2);
+  status += F(",\"currency\":\"");
+  status += htmlEscape(String(appConfig.currency));
+  status += F("\",\"overloadThreshold\":");
+  status += String(appConfig.overloadThresholdW, 1);
+  status += F(",\"overloadWarningPercent\":");
+  status += String(appConfig.overloadWarningPercent, 1);
+  status += F(",\"loadPowerThreshold\":");
+  status += String(appConfig.loadPowerThresholdW, 1);
+  status += F(",\"loadCurrentThreshold\":");
+  status += String(appConfig.loadCurrentThresholdA, 3);
+  status += F(",\"configRevision\":");
+  status += configRevisionText();
+  status += F(",\"configPendingSync\":");
+  status += appConfig.configPendingSync ? F("true") : F("false");
+  status += F(",\"source\":\"");
+  status += htmlEscape(String(appConfig.configSource));
   status += F("\"}");
   portalServer.send(200, "application/json", status);
 }
@@ -236,8 +350,6 @@ void handleSave() {
 
   const String ssid = portalServer.arg("ssid");
   const String password = portalServer.hasArg("password") ? portalServer.arg("password") : "";
-  const float tariff = portalServer.hasArg("tariff") ? portalServer.arg("tariff").toFloat() : appConfig.tariffPerKwh;
-  const float overloadThreshold = portalServer.hasArg("overloadThreshold") ? portalServer.arg("overloadThreshold").toFloat() : appConfig.overloadThresholdW;
 
   if (ssid.length() == 0) {
     portalServer.send(400, "text/plain", "WiFi SSID cannot be empty");
@@ -245,19 +357,28 @@ void handleSave() {
   }
 
   saveWiFiCredentials(ssid, password);
-  appConfig.tariffPerKwh = tariff > 0.0f ? tariff : Config::DEFAULT_TARIFF;
-  appConfig.overloadThresholdW = overloadThreshold > 0.0f ? overloadThreshold : Config::OVERLOAD_THRESHOLD_W;
-  saveLocalConfig();
+  applyPortalConfigFromRequest(true);
 
   Serial.print("[portal] Saved WiFi SSID=");
   Serial.println(ssid);
-  Serial.print("[portal] Saved local config tariff=");
-  Serial.print(appConfig.tariffPerKwh, 2);
+  Serial.print("[config] Captive config saved revision=");
+  Serial.print(configRevisionText());
   Serial.print(" overload=");
   Serial.println(appConfig.overloadThresholdW, 1);
+  syncPortalConfigIfPossible();
   Serial.println("[portal] Credentials saved, restarting");
   portalServer.send(200, "text/html", "<!doctype html><html><body><h1>Saved</h1><p>Voltix is restarting...</p></body></html>");
   scheduleRestart();
+}
+
+void handleSaveConfig() {
+  applyPortalConfigFromRequest(true);
+  Serial.print("[config] Captive config saved revision=");
+  Serial.print(configRevisionText());
+  Serial.print(" overload=");
+  Serial.println(appConfig.overloadThresholdW, 1);
+  syncPortalConfigIfPossible();
+  portalServer.send(200, "text/html", "<!doctype html><html><body><h1>Config saved</h1><p>Config aktif sekarang. WiFi SSID tidak diperlukan.</p><p><a href='/'>Kembali</a></p></body></html>");
 }
 
 void handleResetWiFi() {
@@ -267,6 +388,12 @@ void handleResetWiFi() {
 }
 
 void handleOffline() {
+  applyPortalConfigFromRequest(true);
+  Serial.print("[config] Captive config saved revision=");
+  Serial.print(configRevisionText());
+  Serial.print(" overload=");
+  Serial.println(appConfig.overloadThresholdW, 1);
+  syncPortalConfigIfPossible();
   portalServer.send(
     200,
     "text/html",
@@ -300,6 +427,7 @@ void startSetupPortal(const char* reason) {
   portalServer.on("/", HTTP_GET, sendSetupForm);
   portalServer.on("/status", HTTP_GET, sendStatus);
   portalServer.on("/save", HTTP_POST, handleSave);
+  portalServer.on("/save-config", HTTP_POST, handleSaveConfig);
   portalServer.on("/reset-wifi", HTTP_GET, handleResetWiFi);
   portalServer.on("/offline", HTTP_GET, handleOffline);
   portalServer.on("/offline", HTTP_POST, handleOffline);
@@ -721,9 +849,36 @@ void loadLocalConfig() {
     return;
   }
 
-  appConfig.tariffPerKwh = prefs.getFloat(PREF_KEY_TARIFF, appConfig.tariffPerKwh > 0.0f ? appConfig.tariffPerKwh : Config::DEFAULT_TARIFF);
-  appConfig.overloadThresholdW = prefs.getFloat(PREF_KEY_OVERLOAD, appConfig.overloadThresholdW > 0.0f ? appConfig.overloadThresholdW : Config::OVERLOAD_THRESHOLD_W);
+  if (prefs.isKey(PREF_KEY_TARIFF)) appConfig.tariffPerKwh = prefs.getFloat(PREF_KEY_TARIFF, appConfig.tariffPerKwh);
+  if (prefs.isKey(PREF_KEY_CURRENCY)) {
+    const String currency = prefs.getString(PREF_KEY_CURRENCY, appConfig.currency);
+    if (currency.length() > 0) {
+      strlcpy(appConfig.currency, currency.c_str(), sizeof(appConfig.currency));
+    }
+  }
+  if (prefs.isKey(PREF_KEY_OVERLOAD_THRESHOLD)) appConfig.overloadThresholdW = prefs.getFloat(PREF_KEY_OVERLOAD_THRESHOLD, appConfig.overloadThresholdW);
+  if (prefs.isKey(PREF_KEY_OVERLOAD_WARNING)) appConfig.overloadWarningPercent = prefs.getFloat(PREF_KEY_OVERLOAD_WARNING, appConfig.overloadWarningPercent);
+  if (prefs.isKey(PREF_KEY_LOAD_POWER)) appConfig.loadPowerThresholdW = prefs.getFloat(PREF_KEY_LOAD_POWER, appConfig.loadPowerThresholdW);
+  if (prefs.isKey(PREF_KEY_LOAD_CURRENT)) appConfig.loadCurrentThresholdA = prefs.getFloat(PREF_KEY_LOAD_CURRENT, appConfig.loadCurrentThresholdA);
+  if (prefs.isKey(PREF_KEY_LOAD_REMOVED_DELAY)) appConfig.loadRemovedDelaySec = prefs.getULong(PREF_KEY_LOAD_REMOVED_DELAY, appConfig.loadRemovedDelaySec);
+  if (prefs.isKey(PREF_KEY_OFFLINE_TIMEOUT)) appConfig.offlineTimeoutSec = prefs.getULong(PREF_KEY_OFFLINE_TIMEOUT, appConfig.offlineTimeoutSec);
+  if (prefs.isKey(PREF_KEY_CHECKPOINT_INTERVAL)) appConfig.checkpointIntervalSec = prefs.getULong(PREF_KEY_CHECKPOINT_INTERVAL, appConfig.checkpointIntervalSec);
+  if (prefs.isKey(PREF_KEY_CONFIG_REVISION)) appConfig.configRevision = prefs.getULong64(PREF_KEY_CONFIG_REVISION, appConfig.configRevision);
+  if (prefs.isKey(PREF_KEY_CONFIG_PENDING_SYNC)) appConfig.configPendingSync = prefs.getBool(PREF_KEY_CONFIG_PENDING_SYNC, appConfig.configPendingSync);
+  if (prefs.isKey(PREF_KEY_CONFIG_SOURCE)) {
+    const String source = prefs.getString(PREF_KEY_CONFIG_SOURCE, appConfig.configSource);
+    if (source.length() > 0) {
+      strlcpy(appConfig.configSource, source.c_str(), sizeof(appConfig.configSource));
+    }
+  }
   prefs.end();
+
+  Serial.print("[config] Local config loaded tariff=");
+  Serial.print(appConfig.tariffPerKwh, 2);
+  Serial.print(" overload=");
+  Serial.print(appConfig.overloadThresholdW, 1);
+  Serial.print(" revision=");
+  Serial.println(configRevisionText());
 }
 
 void saveLocalConfig() {
@@ -733,7 +888,26 @@ void saveLocalConfig() {
     return;
   }
 
-  prefs.putFloat(PREF_KEY_TARIFF, appConfig.tariffPerKwh > 0.0f ? appConfig.tariffPerKwh : Config::DEFAULT_TARIFF);
-  prefs.putFloat(PREF_KEY_OVERLOAD, appConfig.overloadThresholdW > 0.0f ? appConfig.overloadThresholdW : Config::OVERLOAD_THRESHOLD_W);
+  prefs.putFloat(PREF_KEY_TARIFF, appConfig.tariffPerKwh >= 0.0f ? appConfig.tariffPerKwh : Config::DEFAULT_TARIFF);
+  prefs.putString(PREF_KEY_CURRENCY, appConfig.currency[0] == '\0' ? Config::DEFAULT_CURRENCY : appConfig.currency);
+  prefs.putFloat(PREF_KEY_OVERLOAD_THRESHOLD, appConfig.overloadThresholdW > 0.0f ? appConfig.overloadThresholdW : Config::OVERLOAD_THRESHOLD_W);
+  prefs.putFloat(PREF_KEY_OVERLOAD_WARNING, appConfig.overloadWarningPercent > 0.0f ? appConfig.overloadWarningPercent : 90.0f);
+  prefs.putFloat(PREF_KEY_LOAD_POWER, appConfig.loadPowerThresholdW >= 0.0f ? appConfig.loadPowerThresholdW : Config::LOAD_POWER_THRESHOLD_W);
+  prefs.putFloat(PREF_KEY_LOAD_CURRENT, appConfig.loadCurrentThresholdA >= 0.0f ? appConfig.loadCurrentThresholdA : Config::LOAD_CURRENT_THRESHOLD_A);
+  prefs.putULong(PREF_KEY_LOAD_REMOVED_DELAY, appConfig.loadRemovedDelaySec);
+  prefs.putULong(PREF_KEY_OFFLINE_TIMEOUT, appConfig.offlineTimeoutSec);
+  prefs.putULong(PREF_KEY_CHECKPOINT_INTERVAL, appConfig.checkpointIntervalSec > 0 ? appConfig.checkpointIntervalSec : 30UL);
+  prefs.putULong64(PREF_KEY_CONFIG_REVISION, appConfig.configRevision);
+  prefs.putBool(PREF_KEY_CONFIG_PENDING_SYNC, appConfig.configPendingSync);
+  prefs.putString(PREF_KEY_CONFIG_SOURCE, appConfig.configSource[0] == '\0' ? "LOCAL" : appConfig.configSource);
   prefs.end();
+
+  Serial.print("[config] Local config saved tariff=");
+  Serial.print(appConfig.tariffPerKwh, 2);
+  Serial.print(" overload=");
+  Serial.print(appConfig.overloadThresholdW, 1);
+  Serial.print(" revision=");
+  Serial.print(configRevisionText());
+  Serial.print(" pendingSync=");
+  Serial.println(appConfig.configPendingSync ? "true" : "false");
 }

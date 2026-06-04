@@ -6,6 +6,7 @@
 void firebaseBegin();
 void firebasePublishLive();
 void firebaseReadConfig();
+bool firebasePushDeviceConfig();
 void firebasePollCommand();
 void firebaseAckCommand();
 bool firebasePushCompletedSession(const CompletedSessionSnapshot& snapshot);

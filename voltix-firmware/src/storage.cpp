@@ -231,7 +231,7 @@ bool storageAppendCompletedSession(const CompletedSessionSnapshot& snapshot) {
   entry["tariff"] = snapshot.tariff;
   entry["currency"] = snapshot.currency;
   entry["overload"] = snapshot.endReason == EndReason::OVERLOAD;
-  entry["overloadThreshold"] = appConfig.overloadThresholdW;
+  entry["overloadThreshold"] = snapshot.overloadThreshold;
   entry["startMode"] = systemModeToString(snapshot.startMode);
   entry["endMode"] = systemModeToString(snapshot.endMode);
   entry["endReason"] = endReasonToString(snapshot.endReason);

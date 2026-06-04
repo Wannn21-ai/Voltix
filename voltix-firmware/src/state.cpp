@@ -18,6 +18,9 @@ void stateBegin() {
   appConfig.loadRemovedDelaySec = 2;
   appConfig.offlineTimeoutSec = 300;
   appConfig.checkpointIntervalSec = 30;
+  appConfig.configRevision = 0;
+  appConfig.configPendingSync = false;
+  strlcpy(appConfig.configSource, "DEFAULT", sizeof(appConfig.configSource));
   strlcpy(appConfig.deviceName, Config::DEFAULT_DEVICE_NAME, sizeof(appConfig.deviceName));
 
   sensorData.voltage = 0.0f;

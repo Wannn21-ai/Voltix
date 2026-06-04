@@ -13,6 +13,9 @@ struct AppConfig {
   unsigned long loadRemovedDelaySec;
   unsigned long offlineTimeoutSec;
   unsigned long checkpointIntervalSec;
+  uint64_t configRevision;
+  bool configPendingSync;
+  char configSource[24];
   char deviceName[32];
 };
 
@@ -92,6 +95,7 @@ struct CompletedSessionSnapshot {
   float powerFactor;
   float tariff;
   const char* currency;
+  float overloadThreshold;
   EndReason endReason;
   SystemMode startMode;
   SystemMode endMode;

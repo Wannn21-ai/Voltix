@@ -5,10 +5,12 @@
 #include "relay.h"
 #include "session.h"
 #include "state.h"
+#include "time_sync.h"
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <stdlib.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 
@@ -24,6 +26,45 @@ static bool pendingStartAck = false;
 static char pendingStartCommandId[48] = "";
 static unsigned long lastLiveLogMs = 0;
 static unsigned long lastPollLogMs = 0;
+
+static String configRevisionText(uint64_t revision) {
+  char buffer[24];
+  snprintf(buffer, sizeof(buffer), "%llu", revision);
+  return String(buffer);
+}
+
+static bool readRevision(JsonDocument& doc, uint64_t& revision) {
+  if (doc["configRevision"].is<uint64_t>()) {
+    revision = doc["configRevision"].as<uint64_t>();
+    return true;
+  }
+  if (doc["configRevision"].is<const char*>()) {
+    revision = strtoull(doc["configRevision"].as<const char*>(), nullptr, 10);
+    return true;
+  }
+  if (doc["configRevision"].is<double>()) {
+    revision = static_cast<uint64_t>(doc["configRevision"].as<double>());
+    return true;
+  }
+  return false;
+}
+
+static void applyConfigDocument(JsonDocument& doc) {
+  if (doc["tariff"].is<float>()) appConfig.tariffPerKwh = doc["tariff"].as<float>();
+  if (doc["currency"].is<const char*>()) strlcpy(appConfig.currency, doc["currency"].as<const char*>(), sizeof(appConfig.currency));
+  if (doc["overloadThreshold"].is<float>()) appConfig.overloadThresholdW = doc["overloadThreshold"].as<float>();
+  if (doc["overloadWarningPercent"].is<float>()) appConfig.overloadWarningPercent = doc["overloadWarningPercent"].as<float>();
+  if (doc["loadPowerThreshold"].is<float>()) appConfig.loadPowerThresholdW = doc["loadPowerThreshold"].as<float>();
+  if (doc["loadCurrentThreshold"].is<float>()) appConfig.loadCurrentThresholdA = doc["loadCurrentThreshold"].as<float>();
+  if (doc["loadRemovedDelaySec"].is<unsigned long>()) appConfig.loadRemovedDelaySec = doc["loadRemovedDelaySec"].as<unsigned long>();
+  if (doc["offlineTimeoutSec"].is<unsigned long>()) appConfig.offlineTimeoutSec = doc["offlineTimeoutSec"].as<unsigned long>();
+  if (doc["checkpointIntervalSec"].is<unsigned long>()) appConfig.checkpointIntervalSec = doc["checkpointIntervalSec"].as<unsigned long>();
+  if (doc["source"].is<const char*>()) {
+    strlcpy(appConfig.configSource, doc["source"].as<const char*>(), sizeof(appConfig.configSource));
+  } else {
+    strlcpy(appConfig.configSource, "FIREBASE", sizeof(appConfig.configSource));
+  }
+}
 
 static bool shouldLog(unsigned long& lastLogMs) {
   const unsigned long now = millis();
@@ -228,7 +269,7 @@ void firebaseReadConfig() {
     return;
   }
 
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<768> doc;
   const DeserializationError error = deserializeJson(doc, response);
   if (error) {
     Serial.print("[firebase] Config parse FAIL ");
@@ -236,21 +277,62 @@ void firebaseReadConfig() {
     return;
   }
 
-  if (doc["tariff"].is<float>()) appConfig.tariffPerKwh = doc["tariff"].as<float>();
-  if (doc["currency"].is<const char*>()) strlcpy(appConfig.currency, doc["currency"].as<const char*>(), sizeof(appConfig.currency));
-  if (doc["overloadThreshold"].is<float>()) appConfig.overloadThresholdW = doc["overloadThreshold"].as<float>();
-  if (doc["overloadWarningPercent"].is<float>()) appConfig.overloadWarningPercent = doc["overloadWarningPercent"].as<float>();
-  if (doc["loadPowerThreshold"].is<float>()) appConfig.loadPowerThresholdW = doc["loadPowerThreshold"].as<float>();
-  if (doc["loadCurrentThreshold"].is<float>()) appConfig.loadCurrentThresholdA = doc["loadCurrentThreshold"].as<float>();
-  if (doc["loadRemovedDelaySec"].is<unsigned long>()) appConfig.loadRemovedDelaySec = doc["loadRemovedDelaySec"].as<unsigned long>();
-  if (doc["offlineTimeoutSec"].is<unsigned long>()) appConfig.offlineTimeoutSec = doc["offlineTimeoutSec"].as<unsigned long>();
-  if (doc["checkpointIntervalSec"].is<unsigned long>()) appConfig.checkpointIntervalSec = doc["checkpointIntervalSec"].as<unsigned long>();
+  uint64_t firebaseRevision = 0;
+  const bool hasRevision = readRevision(doc, firebaseRevision);
+  Serial.print("[config] Firebase config received revision=");
+  Serial.print(hasRevision ? configRevisionText(firebaseRevision) : "none");
+  Serial.print(" overload=");
+  Serial.println(doc["overloadThreshold"] | appConfig.overloadThresholdW);
+
+  if (hasRevision && firebaseRevision < appConfig.configRevision) {
+    Serial.println("[config] Firebase config ignored because local config is newer");
+    return;
+  }
+  if (!hasRevision && appConfig.configPendingSync && appConfig.configRevision > 0) {
+    Serial.println("[config] Firebase config ignored because local config is newer");
+    return;
+  }
+
+  applyConfigDocument(doc);
+  if (hasRevision) {
+    appConfig.configRevision = firebaseRevision;
+  } else if (appConfig.configRevision == 0) {
+    appConfig.configRevision = 1;
+  }
+  appConfig.configPendingSync = false;
   saveLocalConfig();
 
+  Serial.println("[config] Firebase config applied");
   Serial.print("[firebase] Config applied tariff=");
   Serial.print(appConfig.tariffPerKwh, 2);
   Serial.print(" overload=");
   Serial.println(appConfig.overloadThresholdW, 2);
+}
+
+bool firebasePushDeviceConfig() {
+  StaticJsonDocument<640> doc;
+  doc["tariff"] = appConfig.tariffPerKwh;
+  doc["currency"] = appConfig.currency[0] == '\0' ? Config::DEFAULT_CURRENCY : appConfig.currency;
+  doc["overloadThreshold"] = appConfig.overloadThresholdW;
+  doc["overloadWarningPercent"] = appConfig.overloadWarningPercent;
+  doc["loadPowerThreshold"] = appConfig.loadPowerThresholdW;
+  doc["loadCurrentThreshold"] = appConfig.loadCurrentThresholdA;
+  doc["loadRemovedDelaySec"] = appConfig.loadRemovedDelaySec;
+  doc["offlineTimeoutSec"] = appConfig.offlineTimeoutSec;
+  doc["checkpointIntervalSec"] = appConfig.checkpointIntervalSec;
+  doc["configRevision"] = appConfig.configRevision;
+  doc["updatedAt"] = timeIsSynced() ? getUnixMs() : static_cast<uint64_t>(millis());
+  doc["updatedBy"] = "ESP32";
+  doc["source"] = appConfig.configSource[0] == '\0' ? "CAPTIVE_PORTAL" : appConfig.configSource;
+
+  String payload;
+  serializeJson(doc, payload);
+  const bool ok = httpRequest("PATCH", "/devices/esp32-voltix-001/config.json", payload, nullptr, true);
+  if (ok) {
+    appConfig.configPendingSync = false;
+    saveLocalConfig();
+  }
+  return ok;
 }
 
 void firebasePollCommand() {
@@ -386,7 +468,7 @@ bool firebasePushCompletedSession(const CompletedSessionSnapshot& snapshot) {
   doc["tariff"] = snapshot.tariff;
   doc["currency"] = snapshot.currency;
   doc["overload"] = snapshot.endReason == EndReason::OVERLOAD;
-  doc["overloadThreshold"] = appConfig.overloadThresholdW;
+  doc["overloadThreshold"] = snapshot.overloadThreshold;
   doc["startMode"] = systemModeToString(snapshot.startMode);
   doc["endMode"] = systemModeToString(snapshot.endMode);
   doc["endReason"] = endReasonToString(snapshot.endReason);

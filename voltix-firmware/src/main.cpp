@@ -402,6 +402,14 @@ void loop() {
       Serial.println("[network] Manual offline unlocked, WiFi connected");
     }
     timeSyncBegin();
+    if (appConfig.configPendingSync) {
+      Serial.println("[config] Syncing pending config to Firebase");
+      if (firebasePushDeviceConfig()) {
+        Serial.println("[config] Pending config sync OK");
+      } else {
+        Serial.println("[config] Pending config sync FAIL");
+      }
+    }
     firebaseReadConfig();
     firebasePublishLive();
     if (restoredFromManualOffline) {
@@ -464,6 +472,16 @@ void loop() {
   offlineModeUpdate();
 
   if (onlineServicesAllowed) {
+    if (appConfig.configPendingSync && (lastFirebaseConfigMs == 0 || now - lastFirebaseConfigMs >= 30000UL)) {
+      lastFirebaseConfigMs = now;
+      Serial.println("[config] Syncing pending config to Firebase");
+      if (firebasePushDeviceConfig()) {
+        Serial.println("[config] Pending config sync OK");
+      } else {
+        Serial.println("[config] Pending config sync FAIL");
+      }
+    }
+
     if (lastFirebaseConfigMs == 0 || now - lastFirebaseConfigMs >= 30000UL) {
       lastFirebaseConfigMs = now;
       firebaseReadConfig();
